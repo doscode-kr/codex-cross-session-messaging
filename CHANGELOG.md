@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refuse automatic Windows data cleanup when an 8.3 path alias is possible or its check fails.
+
 - Use short MCP result text by default with optional `detail: true` text.
 
 - Add English and Korean installation and operations documents.
