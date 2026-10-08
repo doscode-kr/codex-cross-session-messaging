@@ -1,5 +1,7 @@
 # Security and privacy
 
+[한국어](SECURITY.ko.md) · [Document list](docs/README.md)
+
 ## Report a security problem
 
 Do not put tokens, message bodies, or exploit details in a public issue.

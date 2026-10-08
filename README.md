@@ -2,6 +2,8 @@
 
 [한국어](README.ko.md)
 
+[User manual](docs/MANUAL.md) · [All documentation](docs/README.md)
+
 Send messages between independent Codex CLI sessions on one computer.
 The plugin uses the Codex shared daemon and a local Node.js broker.
 It has no required project workflow.
@@ -127,7 +129,8 @@ Send replies for results, required questions, or blocking errors.
 Avoid replies that only confirm receipt.
 
 Only the current leader can transfer or release the role.
-The default message environment has one leader across projects.
+The default message environment has one leader on the same computer.
+That role is shared across projects in the same message environment.
 The broker releases the role when the leader leaves the shared daemon.
 It does not select another leader automatically.
 
