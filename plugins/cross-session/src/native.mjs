@@ -75,13 +75,25 @@ export class NativeAdapter {
     throw new CrossSessionError('ACTIVE_TURN_NOT_FOUND', 'The active turn changed or is not exposed by this daemon. Retry after checking the session.');
   }
   async turnFinished(id, turnId) {
-    let turns;
-    try { turns = (await this.request('thread/turns/list', { threadId: id, limit: 20, sortDirection: 'desc' })).data; }
+    const finished = turn => ['completed', 'failed', 'interrupted'].includes(turn?.status);
+    try {
+      let cursor;
+      const seen = new Set();
+      do {
+        if (seen.has(cursor)) throw new CrossSessionError('NATIVE_REJECTED', 'The daemon repeated a turn history cursor.');
+        seen.add(cursor);
+        const page = await this.request('thread/turns/list', { threadId: id, limit: 20, sortDirection: 'desc', ...(cursor ? { cursor } : {}) });
+        const turn = page.data.find(turn => turn.id === turnId);
+        if (turn) return finished(turn);
+        cursor = page.nextCursor;
+      } while (cursor);
+      return false;
+    }
     catch (error) {
       if (error.details?.rpcCode !== -32601) throw error;
-      turns = (await this.request('thread/read', { threadId: id, includeTurns: true })).thread.turns;
+      const turns = (await this.request('thread/read', { threadId: id, includeTurns: true })).thread.turns;
+      return finished(turns.find(turn => turn.id === turnId));
     }
-    return ['completed', 'failed', 'interrupted'].includes(turns.find(turn => turn.id === turnId)?.status);
   }
   async deliver(envelope) {
     const id = envelope.to.id;
