@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+- Find completed turns across history pages for one-time idle notifications.
+- Show recovery steps when installation records refer to a missing source checkout.
+- Preserve Korean text and emoji across HTTP request chunks.
+- Stop journal writes after a write failure to prevent later records from overwriting the failed event.
+- Run explicit test files on Node.js 20 and 22.
+- Record passing Windows and macOS CI checks for the tested baseline.
+
 - Add complete English and Korean manuals, reference documents, and documentation indexes.
 
 - Refuse automatic Windows data cleanup when an 8.3 path alias is possible or its check fails.

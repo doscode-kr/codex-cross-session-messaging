@@ -44,7 +44,7 @@ An initial purge check failure must preserve the installed plugin.
 4. Document OS and Codex protocol limits.
 5. Document the tested update and removal path.
 
-The existing Windows results do not establish macOS support by execution.
+Use the commit and environment results in [VERIFICATION.md](VERIFICATION.md) to check the recorded CI baseline.
 A configured workflow is not evidence of a successful CI run.
 The integration test uses a local mock model.
 It does not prove that a real model completes a requested task.
@@ -57,4 +57,4 @@ It does not prove that a real model completes a requested task.
 4. Publish release notes with the compatibility and removal links.
 
 Repository edits and local commits do not imply authorization to push or publish.
-No tag, push, GitHub release, or marketplace publication was performed as part of this document change.
+A push does not create a release tag, a GitHub release, or a marketplace publication.

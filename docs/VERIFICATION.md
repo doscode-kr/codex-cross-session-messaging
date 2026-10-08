@@ -2,7 +2,26 @@
 
 [한국어](VERIFICATION.ko.md)
 
-## Integrated Windows candidate results
+## Recorded CI baseline
+
+[GitHub Actions run 37788462031](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37788462031) passed on 2026-10-08.
+The tested commit was `c4c1b1f8e4fd6cad6c630125c5cdc07431502758`.
+
+| Runner | Node.js | Result |
+|---|---|---|
+| Windows | 20 | Passed |
+| Windows | 22 | Passed |
+| macOS | 20 | Passed |
+| macOS | 22 | Passed |
+
+Each job ran dependency installation, `npm run check`, and `npm test`.
+The jobs used Codex CLI 0.161.0 and enabled `CROSS_SESSION_REAL_CODEX_TEST=1`.
+This result applies to the tested commit.
+It does not verify later changes or all Codex versions.
+A passing job can include skipped tests.
+Use the linked job logs to check skips for each environment.
+
+## Earlier integrated Windows candidate results
 
 An independent verifier ran the integrated candidate checks on 2026-10-08.
 The candidate included the short MCP output, release documents, removal scripts, and release checker changes.
@@ -36,7 +55,7 @@ Automatic cleanup would reject that path.
 The skipped test is not included in the 43 passed results.
 This run therefore does not verify that timing case after inventory starts.
 
-These are integrated candidate results.
+These are historical results for the earlier integrated candidate.
 Run the release checks again after a code change.
 Use [RELEASE.md](RELEASE.md) for the remaining platform and publication checks.
 
@@ -44,7 +63,7 @@ Use [RELEASE.md](RELEASE.md) for the remaining platform and publication checks.
 
 The previous project record reports these checks on 2026-10-08.
 They describe the initial implementation.
-Use the integrated candidate results above for the current Windows checks.
+Use the CI baseline above for the later Windows and macOS checks.
 
 | Environment | Recorded value |
 |---|---|
@@ -119,7 +138,7 @@ CROSS_SESSION_REAL_CODEX_TEST=1 npm test
 
 These commands are instructions for another run.
 The recorded Windows result appears above.
-No macOS run is recorded here.
+The CI baseline above records macOS execution for the stated commit.
 
 ## Release candidate documentation checks
 
@@ -139,9 +158,8 @@ Use the direct Node.js command for installer options.
 
 ## Limits
 
-- No macOS execution result is recorded here.
-- Node.js 22 was not verified in the integrated candidate run.
-- The Windows and macOS GitHub Actions jobs are configured, but no CI execution result is recorded here.
+- CI verifies only the stated commit and tested environment combinations.
+- The earlier local Windows candidate run did not verify Node.js 22.
 - The amount of visible UI output reduction was not measured.
 - The mock model test does not establish real model understanding or task completion.
 - Hook-trusted use across multiple interactive terminals is not verified by the isolated tests.
