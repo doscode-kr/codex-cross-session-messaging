@@ -1,5 +1,7 @@
 # Design
 
+[한국어](DESIGN.ko.md)
+
 ## Scope
 
 The plugin connects independent Codex CLI sessions on one computer.

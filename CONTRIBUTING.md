@@ -1,5 +1,7 @@
 # Contributing
 
+[한국어](CONTRIBUTING.ko.md)
+
 Use the [issue tracker](https://github.com/doscode-kr/codex-cross-session-messaging/issues) for bugs and proposals.
 Read [SECURITY.md](SECURITY.md) for security reports.
 The project uses the [MIT License](LICENSE).
@@ -23,7 +25,7 @@ Use Node.js ESM for implementation files.
 Plugin code is in `plugins/cross-session/`.
 Tests are in `tests/`.
 Install and check scripts are in `scripts/`.
-Public product documents are in `README.md`, `README.ko.md`, and `docs/`.
+Public product documents are in the root directory and `docs/`.
 Private agent rules and task records are not part of the source distribution.
 No local agent workflow is required to contribute.
 
@@ -44,7 +46,8 @@ The real integration test is optional in a standard local test run.
 See [VERIFICATION.md](docs/VERIFICATION.md) for its explicit opt-in.
 For delivery, permissions, or storage changes, include review of failure handling.
 
-Keep the English and Korean README instructions consistent.
+Update the English and Korean versions of public user documents together.
+Keep their instructions consistent.
 Describe commands from the current implementation.
 Report skipped checks and OS limits.
 Do not include personal paths, secrets, or message journals in an issue or pull request.
