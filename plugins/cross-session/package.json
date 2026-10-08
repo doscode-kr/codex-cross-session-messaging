@@ -2,6 +2,14 @@
   "name": "codex-cross-session-plugin",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "description": "Immediate messages between independent Codex CLI sessions on one computer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doscode-kr/codex-cross-session-messaging.git",
+    "directory": "plugins/cross-session"
+  },
+  "bugs": { "url": "https://github.com/doscode-kr/codex-cross-session-messaging/issues" },
   "type": "module",
   "engines": { "node": ">=20" },
   "dependencies": { "ws": "8.22.0" }

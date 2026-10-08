@@ -1,105 +1,83 @@
-# 설계
+# Design
 
-## 범위
+## Scope
 
-이 플러그인은 같은 컴퓨터의 독립 Codex CLI 세션을 연결합니다.
-Windows와 macOS에 같은 Node.js 구현을 사용합니다.
-AI Sprint는 사용 사례입니다.
-이 플러그인은 특정 작업 관리 절차를 요구하지 않습니다.
+The plugin connects independent Codex CLI sessions on one computer.
+Windows and macOS use the same Node.js implementation.
+The plugin does not require a project task system.
 
-## 연결
+## Connection
 
-```mermaid
-flowchart LR
-  A[Codex 세션 A] --> M[MCP 도구]
-  M --> B[로컬 브로커]
-  B --> J[영속 기록]
-  B --> P[Codex 바이트 프록시]
-  P --> D[공유 Codex 데몬]
-  D --> S[수신 세션]
-```
+The request path is:
 
-`codex app-server daemon version`으로 기존 데몬의 소켓을 확인합니다.
-`codex app-server proxy`로 기존 소켓에 연결합니다.
-이 프록시는 바이트를 그대로 전달합니다.
-브로커는 프록시 위에서 WebSocket 연결을 만듭니다.
-`ws` 라이브러리는 WebSocket 연결과 프레임을 처리합니다.
-플러그인은 별도 모델 실행기를 시작하지 않습니다.
+`Codex session → MCP tool → local broker → byte proxy → shared Codex daemon → recipient session`
 
-관련 구현은 [Codex 바이트 프록시 소스](https://github.com/openai/codex/blob/rust-v0.161.0/codex-rs/stdio-to-uds/src/lib.rs)에 있습니다.
+The broker also writes a local JSONL journal.
+It reads the running daemon socket with `codex app-server daemon version`.
+It connects to that socket through `codex app-server proxy`.
+The `ws` dependency handles WebSocket framing over the byte proxy.
+The plugin does not start a separate model executor.
 
-## 즉시 전달
+## Immediate delivery
 
-수신 세션이 작업 중이면 `turn/steer`를 호출합니다.
-현재 작업 ID는 `expectedTurnId`로 지정합니다.
-수신 세션이 대기 중이면 `turn/start`를 호출합니다.
-이 방식은 [Codex App Server 문서](https://learn.chatgpt.com/docs/app-server)의 입력 방식에 따릅니다.
+A busy recipient receives `turn/steer` with the expected current turn ID.
+An idle recipient receives `turn/start`.
+The implementation reads the recipient state before delivery.
+It retries once only for specific explicit rejections before input acceptance.
+It does not retry a timeout.
+It does not use a queue or interrupt after a failed delivery.
+It does not override the recipient model or permissions.
 
-작업 ID 불일치처럼 입력 전 거부가 명확하면 상태를 다시 읽습니다.
-그 경우에만 즉시 전달을 한 번 다시 시도합니다.
-시간 초과는 자동 재시도하지 않습니다.
-즉시 전달 실패는 큐 전달로 바꾸지 않습니다.
-수신 세션의 모델과 권한 설정은 덮어쓰지 않습니다.
+The peer body is `untrusted` additional context.
+The turn input contains the message ID and handling instructions.
+Sender permission information is descriptive.
+It does not grant the recipient new permissions.
 
-메시지 본문은 `additionalContext`의 `untrusted` 항목으로 전달합니다.
-응답을 시작하는 입력에는 메시지 ID와 처리 안내만 넣습니다.
-발신 세션의 권한 정보는 참고 정보입니다.
-그 정보는 수신 세션에 권한을 부여하지 않습니다.
+## Session identity
 
-## 세션 식별
+MCP calls use Codex session metadata for caller identity.
+When that metadata is absent, the MCP process uses `CODEX_THREAD_ID`.
+A call fails if neither provides an identity.
+The plugin does not infer the caller from a recent session, working directory, or parent PID.
+Recipients must be loaded independent root sessions in the shared daemon.
+Subagent sessions are excluded.
 
-MCP 호출의 Codex 메타데이터에서 호출 세션 ID를 읽습니다.
-메타데이터가 없으면 해당 MCP 프로세스의 `CODEX_THREAD_ID`를 사용합니다.
-세션 ID를 확인하지 못하면 호출을 거부합니다.
-최근 세션, 작업 폴더, 부모 PID로 호출 세션을 추측하지 않습니다.
-수신 대상은 공유 데몬에 적재된 독립 세션으로 제한합니다.
-이 방식은 PID 재사용으로 잘못된 세션을 찾는 문제를 피합니다.
+The `SessionStart` hook records project and permission information.
+Git worktrees use their common Git directory for project matching.
+Messages to other projects are allowed.
 
-`SessionStart` 훅은 프로젝트와 권한 정보를 등록합니다.
-Git worktree는 공유 Git 디렉터리로 묶습니다.
-다른 프로젝트의 메시지도 허용합니다.
+## Broker and journal
 
-## 리더와 기록
+Each message directory selects a broker instance and local port.
+The broker binds the port before it opens the journal.
+A concurrent broker that loses the port race must not write the journal.
+The random token and directory instance identifier prevent accidental cross-instance requests.
+The broker listens only on loopback.
 
-각 메시지 환경의 브로커는 기록을 한 곳에서 작성합니다.
-기본 메시지 환경은 컴퓨터의 같은 Codex 사용자 설정을 사용합니다.
-리더 지정 요청은 브로커가 순서대로 처리합니다.
-기존 리더가 있으면 새 리더 지정 요청을 거부합니다.
-현재 리더만 역할을 해제하거나 넘길 수 있습니다.
+The broker serializes leader changes and message records.
+It permits one leader per message environment.
+Only the current leader can release or transfer the role.
+The normal default environment is shared across projects for the same Codex user settings.
 
-브로커는 먼저 로컬 포트를 확보합니다.
-포트를 확보한 브로커만 기록 파일을 엽니다.
-동시에 시작한 다른 브로커는 기록 파일을 열지 않습니다.
-포트가 다른 서비스와 충돌하면 시작을 거부합니다.
-인증 토큰과 환경 식별값은 다른 브로커로의 오접속을 막습니다.
+Each journal append is synchronized to disk.
+On startup, the store truncates an incomplete final line.
+An interrupted send without a saved delivery result becomes `uncertain`.
+The journal is a record, not a future delivery queue.
 
-메시지 기록은 JSONL 파일에 저장합니다.
-브로커는 기록마다 디스크 동기화를 실행합니다.
-중단된 마지막 기록은 재시작 때 제거합니다.
-전달 결과를 기록하기 전에 중단되면 결과를 `uncertain`으로 표시합니다.
+## Idle notifications
 
-## 대기 알림
+The broker checks subscribed sessions approximately once per second.
+It sends one notification after an observed active-to-idle transition.
+A notification attached to a send also checks the delivered turn's end state.
+That check avoids treating the previous idle state as completion of a new turn.
+The broker consumes the subscription before notification delivery.
+It does not resend an uncertain notification automatically.
+A subscription made while the target is idle waits for a later active-to-idle transition.
+An idle notification is not task completion evidence.
 
-브로커는 약 1초마다 신청된 세션의 상태를 확인합니다.
-수신 세션이 작업 중에서 대기 중으로 바뀌면 알림을 한 번 보냅니다.
-메시지와 함께 신청한 알림은 해당 작업 ID의 종료 상태도 확인합니다.
-이 확인은 새 작업 시작 전의 대기 상태를 잘못 읽는 문제를 막습니다.
-알림을 보내기 전에 신청을 제거합니다.
-알림 전달이 불확실해도 자동 재전송하지 않습니다.
-현재 대기 중인 세션에 신청하면 다음 작업 종료를 기다립니다.
-세션 상태는 작업 완료 근거로 사용하지 않습니다.
+## Data boundary
 
-## 가이드 적용
-
-사용자가 제공한 Claude 가이드에서 다음 요구를 적용했습니다.
-
-- 독립 세션 목록을 제공합니다.
-- 즉시 메시지와 답장을 제공합니다.
-- 다음 대기 상태 알림을 한 번 제공합니다.
-- 발신 세션의 이름과 권한 정보를 표시합니다.
-- 다른 세션의 메시지와 사용자 승인을 구분합니다.
-- 전달 결과와 작업 완료를 구분합니다.
-- 서로 다른 worktree의 세션도 연결합니다.
-
-Claude와 동일한 내부 소켓 구조는 요구하지 않습니다.
-Codex의 공유 데몬을 사용해 수신 세션의 기존 대화를 유지합니다.
+The broker stores message bodies and session metadata locally.
+Codex can send peer context to its configured model provider.
+Local storage does not establish that message content remains on the computer.
+See [SECURITY.md](../SECURITY.md) for privacy limits.
