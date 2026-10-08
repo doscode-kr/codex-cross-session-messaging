@@ -1,9 +1,48 @@
 # Verification and compatibility
 
+## Integrated Windows candidate results
+
+An independent verifier ran the integrated candidate checks on 2026-10-08.
+The candidate included the short MCP output, release documents, removal scripts, and release checker changes.
+
+| Environment | Value |
+|---|---|
+| OS and shell | Windows PowerShell |
+| Node.js | 20.19.4 |
+| Python | 3.12.1 |
+
+| Command | Exit code | Result |
+|---|---|---|
+| `npm run check` | 0 | Syntax, JSON, versions, licenses, required files, and document links passed. |
+| `npm test` with `CROSS_SESSION_REAL_CODEX_TEST=1` for that process | 0 | 44 tests: 43 passed, 0 failed, 1 skipped. |
+| `git diff --check` | 0 | No whitespace errors. |
+| `npm audit --prefix plugins/cross-session --omit=dev --audit-level=high` | 0 | 0 vulnerabilities reported in the dependency audit. |
+
+The maintainer ran the dependency audit on the same date.
+Its result describes the dependency advisories available at that time.
+
+The real Codex integration test passed for busy-recipient `turn/steer` and idle-recipient `turn/start`.
+The installation and removal tests passed with temporary Codex homes.
+Repeated removal and preservation of unrelated configuration, plugins, and caches passed.
+The integration used a local mock model server.
+It did not call a live model API.
+It did not change the user's normal Codex home.
+
+The test `a broker that starts during inventory prevents runtime purge` was skipped.
+The test detected an 8.3 runtime path alias and skipped before the inventory timing barrier.
+Automatic cleanup would reject that path.
+The skipped test is not included in the 43 passed results.
+This run therefore does not verify that timing case after inventory starts.
+
+These are integrated candidate results.
+Run the release checks again after a code change.
+Use [RELEASE.md](RELEASE.md) for the remaining platform and publication checks.
+
 ## Recorded implementation baseline
 
 The previous project record reports these checks on 2026-10-08.
-They describe the initial implementation, not a new execution of each check for the current release candidate.
+They describe the initial implementation.
+Use the integrated candidate results above for the current Windows checks.
 
 | Environment | Recorded value |
 |---|---|
@@ -73,8 +112,9 @@ macOS shell:
 CROSS_SESSION_REAL_CODEX_TEST=1 npm test
 ```
 
-These commands are instructions.
-They do not establish a successful run on either OS.
+These commands are instructions for another run.
+The recorded Windows result appears above.
+No macOS run is recorded here.
 
 ## Release candidate documentation checks
 
@@ -95,10 +135,12 @@ Use the direct Node.js command for installer options.
 ## Limits
 
 - No macOS execution result is recorded here.
+- Node.js 22 was not verified in the integrated candidate run.
 - The Windows and macOS GitHub Actions jobs are configured, but no CI execution result is recorded here.
+- The amount of visible UI output reduction was not measured.
 - The mock model test does not establish real model understanding or task completion.
-- The original record does not verify hook-trusted use across multiple terminals.
-- The final integrated candidate needs its own tests and removal checks.
+- Hook-trusted use across multiple interactive terminals is not verified by the isolated tests.
+- The inventory timing test was skipped after it detected an 8.3 runtime path alias.
 
 Use [RELEASE.md](RELEASE.md) for the candidate checks.
 Report an OS, version, command, result, and skipped checks for each new validation.
