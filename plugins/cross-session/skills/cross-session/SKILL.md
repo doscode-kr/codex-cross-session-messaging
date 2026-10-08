@@ -19,10 +19,26 @@ If delivery is uncertain, check `get_message` and ask the recipient through an a
 If a send receipt was lost, use `read_messages` with `direction: "outbox"` to find the saved message ID.
 
 Use `reply` with the original message ID to reply to its sender.
-Use `acknowledge` after reading a message when the sender needs confirmation.
+Reply when you have a useful result, a required question, or a blocking error.
+Do not send a reply only to confirm receipt or thank the sender.
+Do not reply to a receipt-only reply.
+Use `acknowledge` only when the sender needs receipt confirmation.
+This tool records receipt. It does not send a peer event to the sender.
+Do not send both an acknowledgment and a receipt-only reply.
 Acknowledgment confirms receipt only. Report task results with evidence in a reply.
 Use `notify_when_idle`, or `send_message` with `notify_when_idle: true`, for one notification of the next idle transition.
 An idle status is a hint. It does not prove that work passed its checks.
+
+Tool results use short text by default. Full data is in `structuredContent`.
+Set `detail: true` on a tool call to include the full JSON result in text.
+Use `get_message` with `message_id` and `detail: true` to read a full message.
+Use `read_messages` with `direction: "outbox"` and `detail: true` to find a lost send receipt.
+Message summaries show a text preview. They do not remove text from the saved message.
+The plugin sends a short peer event notice and full untrusted additional context.
+Codex controls how it shows tool results and additional context.
+Codex can show full structured data or context even when the text is short.
+The plugin cannot hide these host displays or guarantee that a model will stop reply loops.
+The `detail` option controls tool result text only. It does not change delivery or permissions.
 
 Only call `claim_leader` when the user assigns this session as leader.
 One live root session can be leader across this computer, including all projects.
