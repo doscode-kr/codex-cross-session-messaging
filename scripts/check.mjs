@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { checkDocuments } from './documents.mjs';
 
 const root = resolve('plugins/cross-session');
 function walk(path) {
@@ -29,13 +30,6 @@ requireCheck(marketplace.name === 'cross-session-local' && marketplace.plugins.s
 for (const path of [plugin.skills, plugin.mcpServers, plugin.hooks, './src/mcp.mjs', './src/hooks.mjs', './skills/cross-session/SKILL.md', './package-lock.json']) {
   requireCheck(typeof path === 'string' && existsSync(resolve(root, path)), `Missing plugin file: ${path}`);
 }
-for (const [name, path] of [['README.md', 'README.md'], ['README.ko.md', 'README.ko.md'], ...readdirSync('docs').filter(name => name.endsWith('.md')).map(name => [name, join('docs', name)])]) {
-  const content = readFileSync(path, 'utf8');
-  for (const match of content.matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
-    const target = match[1].replace(/^<|>$/g, '');
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#')) continue;
-    const file = decodeURIComponent(target.split('#')[0]);
-    requireCheck(existsSync(resolve(dirname(path), file)), `Broken link in ${name}: ${target}`);
-  }
-}
-console.log('Plugin syntax, versions, licenses, source files, and document links passed.');
+const documents = checkDocuments();
+requireCheck(documents.passed, documents.errors.join('\n'));
+console.log(`Plugin syntax, versions, licenses, source files, and bilingual documents passed (${documents.pairs} language pairs, ${documents.links} local links).`);
