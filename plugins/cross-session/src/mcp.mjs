@@ -29,6 +29,35 @@ export function validateTool(name, args) {
   }
   return tool;
 }
+function label(value, limit = 160) {
+  const text = String(value ?? 'unknown');
+  return JSON.stringify(text.length > limit ? text.slice(0, limit) + '…' : text);
+}
+function messageSummary(message) {
+  return `${message.id}: ${label(message.from?.name ?? message.from?.id)} -> ${label(message.to?.name ?? message.to?.id)}; ${message.status}; ${message.acknowledgedAt ? 'receipt confirmed' : 'receipt not confirmed'}; ${label(message.text)}`;
+}
+export function summarizeResult(name, result) {
+  let summary;
+  switch (name) {
+    case 'list_agents':
+      summary = [`${result.agents.length} sessions. Self: ${result.self}. Leader: ${result.leader ?? 'none'}.`,
+        ...result.agents.map(agent => `${agent.id}: ${label(agent.name, 120)}; ${agent.status}; ${agent.role}; ${agent.sameProject ? 'same project' : 'other project'}.`)].join('\n');
+      break;
+    case 'register_session': summary = `Session ${result.id}: ${label(result.name, 120)}; ${result.role}.`; break;
+    case 'send_message':
+    case 'reply': summary = `Message ${result.messageId}: ${result.status}. Receipt and task completion are not confirmed.`; break;
+    case 'read_messages': summary = [`${result.messages.length} messages.`, ...result.messages.map(messageSummary)].join('\n'); break;
+    case 'get_message': summary = messageSummary(result); break;
+    case 'acknowledge': summary = `Message ${result.id}: receipt confirmed. Task completion is not confirmed.`; break;
+    case 'claim_leader':
+    case 'release_leader':
+    case 'transfer_leader': summary = `Leader: ${result.leader ?? 'none'}.`; break;
+    case 'notify_when_idle': summary = `Subscription ${result.subscriptionId}: next idle for ${result.to}; one notification. Idle status does not prove task completion.`; break;
+    case 'cancel_idle_notification': summary = `Subscription ${result.cancelled}: cancelled.`; break;
+    default: summary = `${name}: complete.`;
+  }
+  return `${summary}\nFull data: structuredContent. For full text, set detail: true.`;
+}
 export async function handleMcp(request, client = new BrokerClient()) {
   if (request.method === 'initialize') return {
     protocolVersion: request.params?.protocolVersion ?? '2024-11-05',
@@ -41,9 +70,13 @@ export async function handleMcp(request, client = new BrokerClient()) {
     try {
       const { name, arguments: args = {}, _meta = {} } = request.params ?? {};
       validateTool(name, args);
-      const result = await client.call(name, args, callerIdentity(_meta));
-      return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-    } catch (error) { return { content: [{ type: 'text', text: JSON.stringify(errorData(error)) }], isError: true }; }
+      const { detail = false, ...brokerArgs } = args;
+      const result = await client.call(name, brokerArgs, callerIdentity(_meta));
+      return { content: [{ type: 'text', text: detail ? JSON.stringify(result) : summarizeResult(name, result) }], structuredContent: result, isError: false };
+    } catch (error) {
+      const result = errorData(error);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result, isError: true };
+    }
   }
   throw new CrossSessionError('METHOD_NOT_FOUND', `Unknown MCP method: ${request.method}`);
 }
