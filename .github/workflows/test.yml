@@ -1,0 +1,21 @@
+name: Test plugin
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        node: [20, 22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --prefix plugins/cross-session --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: npm install --global @openai/codex@0.161.0
+      - run: npm test
+        env:
+          CROSS_SESSION_REAL_CODEX_TEST: '1'

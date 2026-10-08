@@ -1,0 +1,4 @@
+.research/
+.test-home/
+node_modules/
+*.tgz

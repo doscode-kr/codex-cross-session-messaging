@@ -1,0 +1,6 @@
+{
+  "name": "cross-session-local",
+  "plugins": [
+    { "name": "cross-session", "source": "./plugins/cross-session" }
+  ]
+}

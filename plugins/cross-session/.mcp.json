@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cross-session": {
+      "command": "node",
+      "args": ["src/mcp.mjs"],
+      "cwd": ".",
+      "tool_timeout_sec": 45
+    }
+  }
+}

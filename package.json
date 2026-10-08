@@ -1,0 +1,13 @@
+{
+  "name": "codex-cross-session",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test tests",
+    "doctor": "node plugins/cross-session/src/cli.mjs doctor",
+    "install:global": "node scripts/install.mjs",
+    "check": "node scripts/check.mjs"
+  }
+}
