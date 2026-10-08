@@ -69,6 +69,45 @@ Use the same `CODEX_HOME` for each command.
 Keep the old source until the new installation passes your checks.
 To go back, install the saved release from that source.
 
+## Recover an unavailable source directory
+
+Codex can fail to read the plugin list after a registered source directory moves or is removed.
+The installed cache can still exist.
+The installer and removal script stop when that list cannot be read.
+If the installation record contains an unavailable source path, the error includes that path and the Codex home.
+The error also includes the original Codex failure.
+The record supplies diagnostic information only.
+It does not confirm the current marketplace owner or authorize registration removal.
+An unavailable recorded path does not prove that the source caused the failure.
+Without a usable record, the scripts keep the original error.
+
+1. Read the original Codex error.
+2. Check `sourceRoot` in `<CODEX_HOME>/.cross-session-install.json`, if that file exists.
+3. Restore the original source checkout at its recorded path from your saved copy or release.
+4. Run `codex plugin marketplace list --json` with the same `CODEX_HOME`.
+5. Run `codex plugin list --json` with the same `CODEX_HOME`.
+6. Check whether another installed plugin uses `cross-session-local`.
+7. Use the source change procedure above if you need to move the source.
+
+If the lists still fail, keep the restored source and inspect the original error.
+If the record is missing, use your installation records to find the registered path.
+Do not create an empty source directory or change the record to bypass the error.
+Do not delete Codex settings, plugin registrations, caches, or message data to repair this failure.
+If another installed plugin uses the marketplace, keep its registration and source.
+Use a separate `CODEX_HOME` when you cannot safely change the existing registration.
+
+Before you change or remove the plugin, cancel idle notifications from their original sessions.
+Close sessions that loaded the old plugin before you stop its broker.
+If the old checkout is unavailable, you can run `node plugins/cross-session/src/cli.mjs broker-stop` from a restored or new checkout.
+Use the same `CODEX_HOME` and `CROSS_SESSION_HOME` settings that the old broker used.
+The shutdown command does not repair marketplace registration.
+It does not restart the Codex daemon.
+If shutdown fails, keep the message data and follow [the removal guide](UNINSTALL.md).
+After restoration, you can also retry the installation or removal script with the same `--home` directory.
+The installer checks the plugin list before it installs dependencies.
+The dry run shows planned commands only.
+It does not check the Codex plugin list or confirm that source recovery succeeded.
+
 ## Diagnostics
 
 | Problem | Check |
@@ -80,6 +119,7 @@ To go back, install the saved release from that source.
 | Delivery uncertain | Read the outbox before another send. |
 | Broker stop refused | Cancel your idle notifications before shutdown. |
 | Marketplace source conflict | Use the source change procedure above. |
+| Plugin list fails after a source directory moves | Restore the recorded source path with the recovery procedure above. |
 
 `npm run doctor` reads the daemon and the session list.
 Its output can contain session IDs and project paths.

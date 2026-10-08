@@ -28,16 +28,16 @@ async function install() {
     console.log(JSON.stringify({ dryRun: true, home: opt.home, dependencies: !opt.skipDeps, commands: [['plugin', 'marketplace', 'add', root, '--json'], ['plugin', 'add', pluginId, '--json']] }, null, 2));
     return;
   }
+  mkdirSync(opt.home, { recursive: true });
+  const run = codexRunner(opt.home);
+  const before = await inventory(run, opt.home);
+  if (before.marketplace && !samePath(before.marketplace.root, root)) throw new Error('The marketplace name belongs to another source. Keep that source or remove it yourself.');
   if (!opt.skipDeps) {
     const npm = npmEntry();
     const { stdout, stderr } = await execute(npm.command, [...npm.args, 'ci', '--prefix', plugin, '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: root, windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 });
     if (stdout.trim()) console.log(stdout.trim());
     if (stderr.trim()) console.error(stderr.trim());
   }
-  mkdirSync(opt.home, { recursive: true });
-  const run = codexRunner(opt.home);
-  const before = await inventory(run);
-  if (before.marketplace && !samePath(before.marketplace.root, root)) throw new Error('The marketplace name belongs to another source. Keep that source or remove it yourself.');
   const hadPlugin = before.installed.some(p => p.pluginId === pluginId);
   const temporary = `${paths.receipt}.${process.pid}.tmp`;
   let marketAttempted = false, pluginAttempted = false;
@@ -58,7 +58,7 @@ async function install() {
     if (marketAttempted && !before.marketplace) {
       try {
         preflight(opt.home);
-        const current = await inventory(run);
+        const current = await inventory(run, opt.home);
         if (current.marketplace && !samePath(current.marketplace.root, root)) throw new Error('The marketplace source changed during installation.');
         if (current.installed.some(p => p.marketplaceName === marketplaceName)) throw new Error('An installed plugin still uses the marketplace.');
         if (current.marketplace) await run(['plugin', 'marketplace', 'remove', marketplaceName, '--json']);
