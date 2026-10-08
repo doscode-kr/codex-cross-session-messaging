@@ -102,6 +102,12 @@ Do not remove unrelated files from a custom directory.
 
 ## Manual plugin removal
 
+If the plugin list fails after the source checkout moves, restore the original source path first.
+Follow [the source recovery procedure](OPERATIONS.md#recover-an-unavailable-source-directory).
+The removal script cannot safely proceed without the plugin list.
+An installation record does not replace that list or authorize registration removal.
+The dry run does not read that list.
+
 1. Read the installed plugin list with `codex plugin list --json`.
 2. Check whether another installed plugin uses `cross-session-local`.
 3. Cancel idle notification subscriptions from their original sessions.

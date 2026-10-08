@@ -107,11 +107,25 @@ export function codexRunner(home, env = process.env) {
   };
 }
 
-export async function inventory(run) {
-  const markets = await run(['plugin', 'marketplace', 'list', '--json']);
-  const plugins = await run(['plugin', 'list', '--json']);
-  if (!Array.isArray(markets.marketplaces) || !Array.isArray(plugins.installed)) throw new Error('Unsupported Codex plugin inventory.');
-  return { marketplace: markets.marketplaces.find(m => m.name === marketplaceName), installed: plugins.installed };
+export async function inventory(run, home) {
+  try {
+    const markets = await run(['plugin', 'marketplace', 'list', '--json']);
+    const plugins = await run(['plugin', 'list', '--json']);
+    if (!Array.isArray(markets.marketplaces) || !Array.isArray(plugins.installed)) throw new Error('Unsupported Codex plugin inventory.');
+    return { marketplace: markets.marketplaces.find(m => m.name === marketplaceName), installed: plugins.installed };
+  } catch (error) {
+    // A receipt provides diagnostic context, not permission to change a registration.
+    let sourceRoot;
+    try {
+      if (!home) throw new Error('No home was supplied.');
+      const file = lifecyclePaths(home).receipt;
+      safePath(file);
+      const receipt = JSON.parse(readFileSync(file, 'utf8'));
+      if (receipt.product === 'codex-cross-session' && receipt.schema === 1 && receipt.pluginId === pluginId && receipt.marketplaceName === marketplaceName && typeof receipt.sourceRoot === 'string' && isAbsolute(receipt.sourceRoot) && !existsSync(receipt.sourceRoot)) sourceRoot = receipt.sourceRoot;
+    } catch { /* Keep the original inventory error if the record cannot be used. */ }
+    if (!sourceRoot) throw error;
+    throw new Error(`Codex plugin inventory failed: ${error.message}\nThe recorded marketplace source directory is unavailable: ${JSON.stringify(sourceRoot)}.\nRestore the original source checkout at that path. Use the same Codex home: ${JSON.stringify(home)}. Check codex plugin marketplace list --json and codex plugin list --json before you retry.\nThe installation record does not confirm current marketplace ownership. Do not delete registrations or message data to bypass this error. See docs/OPERATIONS.md and docs/UNINSTALL.md for source recovery.`, { cause: error });
+  }
 }
 
 export function validateCache(cache) {

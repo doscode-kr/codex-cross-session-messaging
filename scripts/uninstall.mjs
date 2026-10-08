@@ -48,7 +48,7 @@ async function uninstall() {
   }
   if (!existsSync(opt.home)) { console.log('Cross-session is not installed in this home.'); return; }
   const run = codexRunner(opt.home);
-  const before = await inventory(run);
+  const before = await inventory(run, opt.home);
   const installed = before.installed.find(p => p.pluginId === pluginId);
   if (installed && before.marketplace && !ownsPluginSource(before.marketplace.root)) throw new Error('The marketplace source is not this product. No plugin was removed.');
   preflight(opt.home);

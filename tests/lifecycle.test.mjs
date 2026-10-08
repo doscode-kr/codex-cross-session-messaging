@@ -4,10 +4,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { temporary } from './helpers.mjs';
-import { options, safeTree, preflight, ownsMarketplace, lifecyclePaths, receiptName, pluginId } from '../scripts/lifecycle.mjs';
+import { options, safeTree, preflight, ownsMarketplace, lifecyclePaths, receiptName, pluginId, marketplaceName, inventory } from '../scripts/lifecycle.mjs';
 import { resolveCodex } from '../plugins/cross-session/src/codex.mjs';
 
 const execute = promisify(execFile);
@@ -33,6 +33,7 @@ const save=()=>writeFileSync(file,JSON.stringify(state));
 const market=args[1]==='marketplace';
 const command=market?args[2]:args[1];
 const cache=join(home,'plugins','cache','cross-session-local','cross-session');
+if(command==='list'&&process.env.FAKE_INVENTORY_FAIL===(market?'marketplace':'plugin')){console.error('fixture source inventory failure');process.exit(2);}
 if(command==='list'&&market&&process.env.FAKE_BROKER_BARRIER&&!existsSync(process.env.FAKE_BROKER_BARRIER)){
  writeFileSync(process.env.FAKE_BROKER_BARRIER,'inventory reached');
  while(!existsSync(process.env.FAKE_BROKER_BARRIER+'.release')) await new Promise(resolve=>setTimeout(resolve,10));
@@ -76,6 +77,54 @@ test('dry runs do not create a home or call Codex', async t => {
   await runScript('install.mjs', ['--home', home, '--dry-run'], env);
   await runScript('uninstall.mjs', ['--home', home, '--dry-run', '--purge-runtime'], env);
   assert.equal(existsSync(home), false);
+});
+
+test('inventory failures preserve installed state and report an unavailable receipt source', async t => {
+  const root = temporary(t);
+  const source = join(root, 'missing-source');
+  for (const script of ['install.mjs', 'uninstall.mjs']) {
+    for (const failure of ['marketplace', 'plugin']) {
+      const home = join(root, `${script}-${failure}`);
+      const cacheFile = join(lifecyclePaths(home).cache, '0.1.0', 'package.json');
+      mkdirSync(join(lifecyclePaths(home).cache, '0.1.0'), { recursive: true });
+      writeFileSync(cacheFile, JSON.stringify({ name: 'codex-cross-session-plugin' }));
+      const data = runtime(home);
+      writeFileSync(join(home, 'config.toml'), '# saved configuration\n');
+      writeFileSync(join(home, 'mock-state.json'), JSON.stringify({ marketplaces: [{ name: marketplaceName, root: source }], installed: [{ pluginId, marketplaceName }, { pluginId: 'other@cross-session-local', marketplaceName }] }));
+      writeFileSync(join(home, receiptName), JSON.stringify({ product: 'codex-cross-session', schema: 1, pluginId, marketplaceName, sourceRoot: source }));
+      const files = [cacheFile, join(home, 'mock-state.json'), join(home, receiptName), join(home, 'config.toml'), join(data, 'events.jsonl'), join(data, 'auth-token')];
+      const before = files.map(file => readFileSync(file));
+      const npmFile = join(root, 'fixture-npm.js');
+      const marker = join(root, 'dependency-process-started');
+      writeFileSync(npmFile, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started');`);
+      await assert.rejects(runScript(script, ['--home', home], { ...mockCodex(root), FAKE_INVENTORY_FAIL: failure, npm_execpath: npmFile }), error => {
+        assert.match(error.stderr, /fixture source inventory failure/);
+        assert.match(error.stderr, /recorded marketplace source directory is unavailable/);
+        assert.ok(error.stderr.includes(JSON.stringify(source)));
+        assert.ok(error.stderr.includes(JSON.stringify(home)));
+        assert.match(error.stderr, /Restore the original source checkout/);
+        assert.match(error.stderr, /does not confirm current marketplace ownership/);
+        return true;
+      });
+      files.forEach((file, i) => assert.deepEqual(readFileSync(file), before[i]));
+      assert.equal(existsSync(marker), false);
+    }
+  }
+});
+
+test('inventory does not infer source movement from absent or unusable receipts', async t => {
+  const root = temporary(t);
+  const failure = new Error('unrelated inventory failure');
+  const run = async () => { throw failure; };
+  const receipt = { product: 'codex-cross-session', schema: 1, pluginId, marketplaceName, sourceRoot: join(root, 'missing-source') };
+  const cases = [null, '{invalid', { ...receipt, product: 'other' }, { ...receipt, schema: 2 }, { ...receipt, pluginId: 'other@other' }, { ...receipt, marketplaceName: 'other' }, { ...receipt, sourceRoot: 42 }, { ...receipt, sourceRoot: 'relative-source' }, { ...receipt, sourceRoot: root }];
+  for (const [index, value] of cases.entries()) {
+    const home = join(root, `home-${index}`);
+    mkdirSync(home);
+    if (value !== null) writeFileSync(join(home, receiptName), typeof value === 'string' ? value : JSON.stringify(value));
+    await assert.rejects(inventory(run, home), error => error === failure);
+  }
+  await assert.rejects(inventory(run), error => error === failure);
 });
 
 test('linked home and linked cache children are rejected before removal', async t => {
@@ -295,6 +344,49 @@ test('an unknown source with the same marketplace name is not overwritten', asyn
   writeFileSync(join(home, 'mock-state.json'), JSON.stringify(state));
   await assert.rejects(runScript('install.mjs', ['--home', home, '--skip-deps'], mockCodex(root)), /belongs to another source/);
   assert.deepEqual(JSON.parse(readFileSync(join(home, 'mock-state.json'), 'utf8')), state);
+});
+
+test('real Codex source recovery preserves the cache and message data', { skip: process.env.CROSS_SESSION_REAL_CODEX_TEST !== '1', timeout: 45000 }, async t => {
+  const root = temporary(t);
+  const home = join(root, 'home');
+  const source = join(root, 'source');
+  const moved = join(root, 'moved-source');
+  const plugin = join(source, 'plugins', 'cross-session');
+  mkdirSync(join(source, '.agents', 'plugins'), { recursive: true });
+  mkdirSync(join(plugin, '.codex-plugin'), { recursive: true });
+  mkdirSync(home);
+  writeFileSync(join(source, '.agents', 'plugins', 'marketplace.json'), JSON.stringify({ name: marketplaceName, plugins: [{ name: 'cross-session', source: './plugins/cross-session' }] }));
+  writeFileSync(join(plugin, 'package.json'), JSON.stringify({ name: 'codex-cross-session-plugin', version: '0.1.0' }));
+  writeFileSync(join(plugin, '.codex-plugin', 'plugin.json'), JSON.stringify({ name: 'cross-session', version: '0.1.0', description: 'Isolated source recovery fixture.' }));
+  const bin = resolveCodex();
+  const env = { ...process.env, CODEX_HOME: home };
+  const codex = async args => JSON.parse((await execute(bin.command, [...bin.args, ...args], { env, windowsHide: true, timeout: 15000 })).stdout);
+  await codex(['plugin', 'marketplace', 'add', source, '--json']);
+  await codex(['plugin', 'add', pluginId, '--json']);
+  writeFileSync(join(home, receiptName), JSON.stringify({ product: 'codex-cross-session', schema: 1, pluginId, marketplaceName, sourceRoot: source }));
+  const data = runtime(home);
+  const cacheFile = join(lifecyclePaths(home).cache, '0.1.0', 'package.json');
+  const files = [cacheFile, join(home, receiptName), join(data, 'events.jsonl'), join(data, 'auth-token')];
+  const before = files.map(file => readFileSync(file));
+  // Both paths are fixed children of this isolated test directory.
+  assert.equal(resolve(source), join(root, 'source'));
+  assert.equal(resolve(moved), join(root, 'moved-source'));
+  renameSync(source, moved);
+  for (const script of ['install.mjs', 'uninstall.mjs']) {
+    await assert.rejects(runScript(script, ['--home', home, ...(script === 'install.mjs' ? ['--skip-deps'] : [])]), error => {
+      assert.match(error.stderr, /recorded marketplace source directory is unavailable/);
+      assert.ok(error.stderr.includes(JSON.stringify(source)));
+      return true;
+    });
+    files.forEach((file, i) => assert.deepEqual(readFileSync(file), before[i]));
+  }
+  renameSync(moved, source);
+  assert.equal((await codex(['plugin', 'marketplace', 'list', '--json'])).marketplaces.find(m => m.name === marketplaceName).root, source);
+  assert.deepEqual((await codex(['plugin', 'list', '--json'])).installed.map(p => p.pluginId), [pluginId]);
+  await runScript('uninstall.mjs', ['--home', home]);
+  assert.equal(existsSync(lifecyclePaths(home).cache), false);
+  assert.deepEqual(readFileSync(join(data, 'events.jsonl')), before[2]);
+  assert.deepEqual(readFileSync(join(data, 'auth-token')), before[3]);
 });
 
 test('real Codex installation and removal preserve another plugin and configuration', { skip: process.env.CROSS_SESSION_REAL_CODEX_TEST !== '1', timeout: 45000 }, async t => {
