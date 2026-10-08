@@ -23,12 +23,13 @@ try {
       for (let i = 0; i < rest.length; i++) {
         if (!rest[i].startsWith('--')) throw new Error(`Expected an option, got ${rest[i]}`);
         const key = rest[i].slice(2).replaceAll('-', '_');
-        const value = ['notify_when_idle', 'unacknowledged_only'].includes(key) ? true : rest[++i];
+        const value = ['notify_when_idle', 'unacknowledged_only', 'detail'].includes(key) ? true : rest[++i];
         if (key === 'session') sessionId = value;
         else args[key] = key === 'limit' ? Number(value) : value;
       }
       validateTool(command, args);
-      console.log(JSON.stringify(await client.call(command, args, sessionId), null, 2));
+      const { detail, ...brokerArgs } = args;
+      console.log(JSON.stringify(await client.call(command, brokerArgs, sessionId), null, 2));
     }
   }
 } catch (error) { console.error(JSON.stringify(errorData(error), null, 2)); process.exitCode = 1; }
