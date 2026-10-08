@@ -2,3 +2,35 @@
 .test-home/
 node_modules/
 *.tgz
+
+# Local AI development rules, skills, agents, memory, and sprint records.
+# The cross-session plugin's shipped skill remains in plugins/cross-session/skills/.
+AGENTS.md
+Agents.md
+AGENTS.local.md
+CLAUDE.md
+CLAUDE_*.md
+SKILLS_README.md
+ai_sprint_system/
+.claude/
+.codex/
+.local-development/
+.omc/
+.vscode/
+.agents/*
+!.agents/plugins/
+.agents/plugins/*
+!.agents/plugins/marketplace.json
+
+# Local credentials and generated output.
+.env
+.env.*
+!.env.example
+/.mcp.json
+*.log
+__pycache__/
+*.pyc
+/coverage/
+/test-results/
+.DS_Store
+Thumbs.db
