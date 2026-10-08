@@ -18,9 +18,14 @@ export async function startBroker({ config = settings(), native = new NativeAdap
     if (Buffer.byteLength(supplied) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) return reply(403, { code: 'AUTH_FAILED', message: 'The local port belongs to another broker or the token does not match.' });
     if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json' || req.headers.origin) return reply(400, { code: 'INVALID_REQUEST', message: 'Use a local authenticated JSON client.' });
     try {
-      let raw = '';
-      for await (const part of req) { raw += part; if (Buffer.byteLength(raw) > 131072) throw new CrossSessionError('REQUEST_TOO_LARGE', 'Request exceeds 128 KiB.'); }
-      const data = JSON.parse(raw);
+      const parts = [];
+      let size = 0;
+      for await (const part of req) {
+        size += part.length;
+        if (size > 131072) throw new CrossSessionError('REQUEST_TOO_LARGE', 'Request exceeds 128 KiB.');
+        parts.push(part);
+      }
+      const data = JSON.parse(Buffer.concat(parts, size).toString('utf8'));
       if (data.instance !== config.instance) throw new CrossSessionError('INSTANCE_MISMATCH', 'Another messaging state directory uses this port.');
       if (req.url === '/health') return reply(200, { version: '0.1.0', instance: config.instance, pid: process.pid });
       if (req.url === '/call') return reply(200, await service.call(data.method, data.args, data.sessionId));
