@@ -1,6 +1,10 @@
 # Changelog
 
+[한국어](CHANGELOG.ko.md)
+
 ## Unreleased
+
+- Add complete English and Korean manuals, reference documents, and documentation indexes.
 
 - Refuse automatic Windows data cleanup when an 8.3 path alias is possible or its check fails.
 

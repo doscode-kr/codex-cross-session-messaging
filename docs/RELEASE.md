@@ -1,5 +1,7 @@
 # Release checklist
 
+[한국어](RELEASE.ko.md)
+
 The current distribution is a Codex plugin in a local source marketplace.
 The npm packages are private.
 This repository does not publish an npm package or a hosted service.

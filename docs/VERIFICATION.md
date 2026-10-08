@@ -1,5 +1,7 @@
 # Verification and compatibility
 
+[한국어](VERIFICATION.ko.md)
+
 ## Integrated Windows candidate results
 
 An independent verifier ran the integrated candidate checks on 2026-10-08.
@@ -64,7 +66,10 @@ The original record also reports delivery checks with separately started Codex 0
 The record does not establish support for all Codex versions.
 Protocol changes can affect compatibility.
 
-The tests cover delivery to busy and idle recipients, one leader, reply permissions, acknowledgments, uncertain results, journal recovery, broker authentication, startup races, hook paths with spaces, and one-time idle notifications.
+The tests cover delivery to busy and idle recipients.
+They cover one leader, reply permissions, and acknowledgments.
+They cover uncertain results, journal recovery, and broker authentication.
+They cover startup races, hook paths with spaces, and one-time idle notifications.
 The record reports no test messages to running user sessions.
 Hook trust must still be reviewed by the user in `/hooks`.
 
