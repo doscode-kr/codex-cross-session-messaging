@@ -7,8 +7,8 @@ import { Store } from '../plugins/cross-session/src/store.mjs';
 import { MessagingService } from '../plugins/cross-session/src/service.mjs';
 
 export function temporary(t, beforeCleanup = () => {}) {
-  const parent = realpathSync(tmpdir());
-  const root = realpathSync(mkdtempSync(join(parent, 'codex-cross-session-test-')));
+  const parent = realpathSync.native(tmpdir());
+  const root = realpathSync.native(mkdtempSync(join(parent, 'codex-cross-session-test-')));
   t.after(async () => {
     await beforeCleanup();
     assert.equal(dirname(root), parent);
