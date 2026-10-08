@@ -1,41 +1,72 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { dirname, delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveCodex } from '../plugins/cross-session/src/codex.mjs';
+import { options, preflight, samePath, codexRunner, inventory, pluginId, marketplaceName, validateCache } from './lifecycle.mjs';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plugin = join(root, 'plugins', 'cross-session');
-const options = process.argv.slice(2);
-const dryRun = options.includes('--dry-run');
-const homeIndex = options.indexOf('--home');
-const env = { ...process.env };
-if (homeIndex >= 0) {
-  if (!options[homeIndex + 1]) throw new Error('--home requires a directory');
-  env.CODEX_HOME = resolve(options[homeIndex + 1]);
-  if (!dryRun) mkdirSync(env.CODEX_HOME, { recursive: true });
-}
+
 function npmEntry() {
   const candidates = [process.env.npm_execpath, join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')];
-  for (const dir of (process.env.PATH || '').split(delimiter)) candidates.push(join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+  const search = process.env.PATH ?? process.env.Path ?? '';
+  for (const dir of search.split(delimiter)) candidates.push(join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
   const entry = candidates.find(file => file && existsSync(file) && file.endsWith('.js'));
   if (entry) return { command: process.execPath, args: [entry] };
   if (process.platform !== 'win32') return { command: 'npm', args: [] };
-  throw new Error('Run npm run install:global so npm provides its executable path.');
+  throw new Error('Run npm run install:global so npm supplies its executable path.');
 }
-async function run(bin, args) {
-  console.log(JSON.stringify({ command: bin.command, args: [...bin.args, ...args] }));
-  if (dryRun) return;
-  const { stdout, stderr } = await execute(bin.command, [...bin.args, ...args], { cwd: root, env, windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 });
-  if (stdout.trim()) console.log(stdout.trim());
-  if (stderr.trim()) console.error(stderr.trim());
+
+async function install() {
+  const opt = options(process.argv.slice(2), 'install');
+  if (opt.help) { console.log('Usage: node scripts/install.mjs [--home DIR] [--dry-run] [--skip-deps]'); return; }
+  const paths = preflight(opt.home);
+  validateCache(paths.cache);
+  if (opt.dryRun) {
+    console.log(JSON.stringify({ dryRun: true, home: opt.home, dependencies: !opt.skipDeps, commands: [['plugin', 'marketplace', 'add', root, '--json'], ['plugin', 'add', pluginId, '--json']] }, null, 2));
+    return;
+  }
+  if (!opt.skipDeps) {
+    const npm = npmEntry();
+    const { stdout, stderr } = await execute(npm.command, [...npm.args, 'ci', '--prefix', plugin, '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: root, windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 });
+    if (stdout.trim()) console.log(stdout.trim());
+    if (stderr.trim()) console.error(stderr.trim());
+  }
+  mkdirSync(opt.home, { recursive: true });
+  const run = codexRunner(opt.home);
+  const before = await inventory(run);
+  if (before.marketplace && !samePath(before.marketplace.root, root)) throw new Error('The marketplace name belongs to another source. Keep that source or remove it yourself.');
+  const hadPlugin = before.installed.some(p => p.pluginId === pluginId);
+  const temporary = `${paths.receipt}.${process.pid}.tmp`;
+  let marketAttempted = false, pluginAttempted = false;
+  try {
+    marketAttempted = true;
+    await run(['plugin', 'marketplace', 'add', root, '--json']);
+    pluginAttempted = true;
+    const result = await run(['plugin', 'add', pluginId, '--json']);
+    if (result.pluginId !== pluginId) throw new Error('Codex did not confirm the expected plugin installation.');
+    writeFileSync(temporary, JSON.stringify({ product: 'codex-cross-session', schema: 1, pluginId, marketplaceName, sourceRoot: root }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    renameSync(temporary, paths.receipt);
+    console.log('Installed cross-session. Open a new Codex CLI session. Review the plugin in /hooks and trust its hooks. Use $cross-session.');
+  } catch (error) {
+    const failures = [];
+    if (pluginAttempted && !hadPlugin) {
+      try { preflight(opt.home); validateCache(paths.cache); await run(['plugin', 'remove', pluginId, '--json']); } catch (rollback) { failures.push(rollback.message); }
+    }
+    if (marketAttempted && !before.marketplace) {
+      try {
+        preflight(opt.home);
+        const current = await inventory(run);
+        if (current.marketplace && !samePath(current.marketplace.root, root)) throw new Error('The marketplace source changed during installation.');
+        if (current.installed.some(p => p.marketplaceName === marketplaceName)) throw new Error('An installed plugin still uses the marketplace.');
+        if (current.marketplace) await run(['plugin', 'marketplace', 'remove', marketplaceName, '--json']);
+      } catch (rollback) { failures.push(rollback.message); }
+    }
+    if (existsSync(temporary)) rmSync(temporary);
+    throw new Error(`Installation failed: ${error.message}${failures.length ? ` Rollback failed: ${failures.join('; ')}. Run uninstall:global after you inspect the home.` : ''}`);
+  }
 }
-try {
-  if (!options.includes('--skip-deps')) await run(npmEntry(), ['ci', '--prefix', plugin, '--ignore-scripts', '--no-audit', '--no-fund']);
-  const codex = resolveCodex(env);
-  await run(codex, ['plugin', 'marketplace', 'add', root, '--json']);
-  await run(codex, ['plugin', 'add', 'cross-session@cross-session-local', '--json']);
-  console.log('Open a new Codex CLI session. Review this plugin in /hooks and trust its hooks. Then use $cross-session.');
-} catch (error) { console.error(error.message); process.exitCode = 1; }
+
+try { await install(); } catch (error) { console.error(error.message); process.exitCode = 1; }

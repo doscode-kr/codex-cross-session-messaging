@@ -2,12 +2,21 @@
   "name": "codex-cross-session",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/doscode-kr/codex-cross-session-messaging"
+  },
+  "bugs": {
+    "url": "https://github.com/doscode-kr/codex-cross-session-messaging/issues"
+  },
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
     "test": "node --test tests",
     "doctor": "node plugins/cross-session/src/cli.mjs doctor",
     "install:global": "node scripts/install.mjs",
+    "uninstall:global": "node scripts/uninstall.mjs",
     "check": "node scripts/check.mjs"
   }
 }
