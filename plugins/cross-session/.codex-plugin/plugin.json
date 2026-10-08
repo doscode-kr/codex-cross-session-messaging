@@ -1,7 +1,7 @@
 {
   "name": "cross-session",
   "version": "0.1.0",
-  "description": "Immediate messaging between independent Codex CLI sessions on one computer. One global leader, replies, and one-shot idle notifications.",
+  "description": "Immediate messages between independent Codex CLI sessions on one computer. Replies, read acknowledgments, and one-time idle notifications.",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json"

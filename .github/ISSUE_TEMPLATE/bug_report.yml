@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible plugin error.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove private message bodies, project paths, and authentication tokens.
+        Use SECURITY.md for security reports.
+  - type: input
+    id: versions
+    attributes:
+      label: Environment and versions
+      description: Include OS, Node.js, Codex CLI, and plugin release or commit.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use a small example with no private data.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+      description: Include a redacted error code when available.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks already performed
+      description: State whether the problem occurs with a temporary Codex home.
