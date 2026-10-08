@@ -163,6 +163,8 @@ The plugin does not restart or upgrade the running Codex daemon.
 Use the [update procedure](docs/OPERATIONS.md).
 Use the [removal procedure](docs/UNINSTALL.md) to remove the plugin and optional local data.
 Plugin removal and local data removal are separate operations.
+Windows runtime directories with 8.3 path aliases need manual data cleanup.
+Automatic cleanup also refuses a failed alias check.
 
 ## Check and support
 

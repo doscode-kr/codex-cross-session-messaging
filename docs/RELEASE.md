@@ -30,6 +30,9 @@ The delivered files must contain the plugin manifest, MCP configuration, hooks, 
 The marketplace source must resolve to `plugins/cross-session`.
 The installed cache must contain runtime dependencies after source installation.
 The plugin directory must include the same MIT license text as the repository root.
+Windows cleanup checks must cover 8.3 path aliases and a failed alias query.
+Both conditions must preserve runtime data.
+An initial purge check failure must preserve the installed plugin.
 
 ## Prepare support
 

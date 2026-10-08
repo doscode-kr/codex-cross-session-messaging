@@ -76,6 +76,19 @@ If that later check fails, the plugin can already be removed while message data 
 The dry run does not test whether the broker is active.
 Do not delete an active broker's journal or authentication token.
 
+On Windows, automatic cleanup also checks the runtime directory's 8.3 short path.
+It refuses cleanup when that short path differs from the native full path.
+It also refuses cleanup when the short path cannot be checked.
+A legacy broker can use a different port for the same directory under a short path.
+A stopped broker at the full-path port does not establish that the short-path broker is stopped.
+This path check applies to `--purge-runtime` and its dry run.
+The first check occurs before plugin removal.
+If it fails, the command keeps both the plugin and message data.
+Run standard removal without `--purge-runtime` to remove the plugin while you keep the data.
+Use the full `CODEX_HOME` directory path for standard removal.
+Do not pass its 8.3 short path to `--home`.
+Use the manual data procedure below only after you confirm that all related brokers have stopped.
+
 The broker shutdown command is `node plugins/cross-session/src/cli.mjs broker-stop`.
 It refuses shutdown while idle notification subscriptions remain.
 Cancel your subscriptions from their original sessions before shutdown.
@@ -104,3 +117,28 @@ They do not remove the message directory.
 Keep the marketplace registration when another installed plugin uses it.
 Keep the source checkout until you have completed the checks.
 You can remove that checkout as a separate file operation after removal.
+
+## Manual Windows data removal after an alias refusal
+
+Warning: Manual data removal permanently deletes saved messages and registrations.
+
+1. Save the records you need from the runtime directory.
+2. Cancel idle notification subscriptions from their original sessions.
+3. Close all related Codex sessions.
+4. Stop each broker that used the full path or a short path from an external shell.
+5. Confirm with your OS process tools that all those broker processes have exited.
+6. If still installed, remove the plugin with `node scripts/uninstall.mjs --home <full-home-path>`.
+7. Check the runtime directory's resolved full path.
+8. Confirm that `events.jsonl` and `auth-token` belong to this plugin.
+9. Delete only `events.jsonl` from that directory.
+10. Delete only `auth-token` from that directory.
+11. Remove the runtime directory only if it is empty.
+
+Use `node plugins/cross-session/src/cli.mjs broker-stop` with the same message environment that each broker used.
+Set `CROSS_SESSION_HOME` to that broker's runtime path spelling when needed.
+Restore your environment setting after the shutdown commands.
+The token can be shared by brokers that use different ports for one directory.
+Do not use `BROKER_OFFLINE` for one spelling as proof that all brokers have stopped.
+If you cannot confirm every related broker has stopped, keep the data files.
+Keep unrelated files and the parent Codex home.
+This procedure does not require a Codex daemon restart.
