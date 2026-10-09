@@ -12,8 +12,17 @@ It also records messages.
 
 You need Node.js 20 or later.
 You need Codex CLI with plugin support and a shared daemon.
-The recorded Windows checks used Codex CLI 0.161.0.
+The recorded CI baseline used Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
+It applies to commit `c4c1b1f`.
+Earlier Windows records also include a Codex 0.159.3 shared daemon.
+Those records do not verify other Codex versions.
+The plugin uses the Codex `experimentalApi` capability.
+A protocol change can break session lookup or delivery.
 See [verification limits](VERIFICATION.md) for platform evidence.
+
+This release is experimental.
+Use it for local collaboration with user supervision.
+Delivery acceptance does not guarantee model understanding or task completion.
 
 1. Clone the source repository.
 
@@ -136,6 +145,28 @@ The plugin does not use a completion queue or an interrupt as a fallback.
 Peer text is not a user command or approval.
 The recipient keeps its user task scope and permissions.
 Messages do not prevent simultaneous file changes.
+
+### Discuss work directly with another session
+
+All sessions can send questions, discuss choices, and reply to other sessions.
+The leader role is optional for this communication.
+If a user assigns a leader, peers can report the discussion result to that leader.
+For this example, register a third session as `gamma`.
+Keep each session within its user-authorized task scope.
+
+1. Ask `beta` to send `gamma` a question about their shared API change.
+2. Ask `gamma` to reply to that message with the affected files and its proposed change.
+3. Ask `beta` to reply with its decision or a remaining question.
+4. Ask `beta` to report the result to `alpha` if the user assigned `alpha` as leader.
+
+Use `send_message` for the initial question and the report to a different recipient.
+Use `reply` with the received message ID for the discussion replies.
+A report can include the decision, affected files, evidence, and unresolved questions.
+An agreement between peers is not user approval.
+It does not expand either session's permissions or task scope.
+When planned file changes overlap, discuss them before you continue.
+Report unresolved conflicts to the assigned leader.
+Messages do not lock files or require a particular task system.
 
 ## 5. Check delivery, receipt, and completion
 

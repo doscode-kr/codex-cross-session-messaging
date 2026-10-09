@@ -57,6 +57,12 @@ The random token and directory instance identifier prevent accidental cross-inst
 The broker listens only on loopback.
 
 The broker serializes leader changes and message records.
+Broker state checks and journal changes use the same serial operation path.
+Waiting for a Codex delivery response does not occupy that path.
+Submissions to the same recipient stay in order until each Codex response arrives.
+A slow delivery response for one recipient does not block delivery to another recipient.
+The broker waits for the delivery response, not for the recipient's turn to finish.
+An accepted delivery can still need a later result reply.
 It permits one leader per message environment.
 Only the current leader can release or transfer the role.
 The normal default environment is shared across projects for the same Codex user settings.
@@ -65,6 +71,12 @@ Each journal append is synchronized to disk.
 On startup, the store truncates an incomplete final line.
 An interrupted send without a saved delivery result becomes `uncertain`.
 The journal is a record, not a future delivery queue.
+
+Broker shutdown also uses the serial operation path.
+Outstanding idle notification subscriptions prevent shutdown with `SUBSCRIPTIONS_ACTIVE`.
+Delivery responses still in progress prevent shutdown with `DELIVERIES_ACTIVE`.
+Once shutdown is accepted, the broker rejects new requests with `BROKER_STOPPING`.
+These checks protect delivery records before the broker closes its journal.
 
 ## Idle notifications
 

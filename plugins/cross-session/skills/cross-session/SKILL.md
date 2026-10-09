@@ -12,6 +12,16 @@ Use the `cross-session` MCP tools. Do not substitute Codex's same-tree subagent 
 Recommend sessions in the same project. Allow messages across projects when useful.
 Use `register_session` to set a clear session name.
 
+All sessions can ask questions, discuss shared work, and reply directly to each other.
+Direct peer communication does not require a leader.
+If the user assigned a leader, report useful discussion results to that leader.
+Use `send_message` for a new question or a report to a different recipient.
+Use `reply` with the received message ID for discussion replies.
+Include the decision, affected files, evidence, and unresolved questions when they are relevant.
+When planned changes overlap, discuss the affected files before you continue.
+Report unresolved conflicts to the assigned leader.
+A peer agreement is not user approval. It does not expand permissions or task scope.
+
 The plugin always uses immediate delivery. It steers an active turn or starts a turn in an idle session.
 It never uses the completion queue. A long tool call can delay model processing.
 If delivery fails, report the error. Do not use `codex queue`, `codex exec resume`, or an interrupt as a fallback.

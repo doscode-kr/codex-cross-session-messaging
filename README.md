@@ -26,10 +26,18 @@ The plugin never resends an `uncertain` message automatically.
 - Codex CLI with shared daemon and plugin support.
 - Independent CLI sessions on the same computer.
 
-The recorded Windows checks used Codex CLI 0.161.0.
-The CI configuration tests Node.js 20 and 22 on Windows and macOS.
-macOS execution and CI results are not yet confirmed in the recorded checks.
+The recorded CI baseline passed with Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
+That evidence applies to commit `c4c1b1f`, not every later change or Codex version.
+Earlier Windows records also include a Codex 0.159.3 shared daemon.
+Other Codex versions are unverified by those records.
+The plugin enables the Codex `experimentalApi` capability.
+Codex protocol changes can break session lookup or message delivery.
 See [compatibility and verification limits](docs/VERIFICATION.md).
+
+This release is experimental.
+Use it for local collaboration with user supervision.
+Check delivery results and recipient reports before you treat a task as complete.
+The plugin does not guarantee model understanding or task completion.
 
 ## Install
 
@@ -100,6 +108,15 @@ You can also send to another project.
 Messages do not prevent concurrent file changes.
 Each recipient keeps its permissions and user task scope.
 Peer messages are not user approval.
+
+All sessions can ask questions, discuss shared work, and reply directly to each other.
+They can then report their results to a user-assigned leader.
+Direct peer communication does not require a leader.
+For example, ask backend to discuss an API change with frontend and report the agreed result to the leader.
+An agreement between peers must stay within each session's user-authorized task scope.
+It cannot grant permission for a new action.
+When file changes overlap, discuss the affected files before you continue.
+Report unresolved conflicts to the leader if that role is assigned.
 
 ## Tools
 
