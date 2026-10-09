@@ -6,22 +6,22 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { CrossSessionError } from './errors.mjs';
 
-export function settings(env = process.env) {
+export function settings(env = process.env, { create = true } = {}) {
   const requested = resolve(env.CROSS_SESSION_HOME || join(env.CODEX_HOME || join(homedir(), '.codex'), 'cross-session'));
-  mkdirSync(requested, { recursive: true, mode: 0o700 });
+  if (create) mkdirSync(requested, { recursive: true, mode: 0o700 });
   const root = realpathSync(requested);
   const canonical = process.platform === 'win32' ? root.toLowerCase() : root;
   const hash = createHash('sha256').update(canonical).digest('hex');
   // Avoid the dynamic port range, which Windows often reserves for Hyper-V.
   return { root, instance: hash, port: 10000 + (parseInt(hash.slice(0, 8), 16) % 30000) };
 }
-export function authToken(root) {
+export function authToken(root, { create = true } = {}) {
   const path = join(root, 'auth-token');
   try {
     const existing = readFileSync(path, 'utf8');
     if (!/^[a-f0-9]{64}$/.test(existing)) throw new CrossSessionError('TOKEN_INVALID', 'The saved broker token is invalid.');
     return existing;
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  } catch (error) { if (error.code !== 'ENOENT' || !create) throw error; }
   // Publish a complete token atomically. Concurrent callers cannot read an
   // empty token and cannot replace the winning token (hard link, no overwrite).
   const temporary = join(root, `auth-token-${process.pid}-${randomBytes(8).toString('hex')}`);
@@ -34,9 +34,14 @@ export function authToken(root) {
   return token;
 }
 export class BrokerClient {
-  constructor({ config = settings(), timeoutMs = 35000, autoStart = true } = {}) { this.config = config; this.timeoutMs = timeoutMs; this.autoStart = autoStart; }
+  constructor({ config, timeoutMs = 35000, autoStart = true, createState = true } = {}) {
+    this.config = config ?? settings(process.env, { create: createState });
+    this.timeoutMs = timeoutMs;
+    this.createState = createState;
+    this.autoStart = autoStart && createState;
+  }
   async request(path, data) {
-    const token = authToken(this.config.root);
+    const token = authToken(this.config.root, { create: this.createState });
     let response, body;
     try {
       response = await fetch(`http://127.0.0.1:${this.config.port}${path}`, {
