@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- Move session and idle history queries outside serial state updates.
+  Preserve cancellation and shutdown checks before sending late idle notifications.
+- Keep message history selections within the requested result limit.
 - Retry a discovery `thread/read` once for the specific `-32603` empty-rollout metadata error.
   The metadata path and rollout path must match.
   This is a read retry, not a message resend.

@@ -15,6 +15,8 @@ export class MessagingService {
     this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve();
     this.deliveries = new Set();
     this.recipients = new Map();
+    this.idleChecks = new Map();
+    this.refreshing = null;
     this.stopping = false;
   }
   run(action) {
@@ -22,9 +24,21 @@ export class MessagingService {
     this.serial = result.catch(() => {});
     return result;
   }
-  async refresh() {
-    this.live = new Map((await this.native.list()).map(thread => [thread.id, thread]));
-    if (this.store.leader && !this.live.has(this.store.leader)) this.store.record('leader', null);
+  refresh() {
+    this.requireRunning();
+    if (this.refreshing) return this.refreshing;
+    const refresh = (async () => {
+      const live = new Map((await this.native.list()).map(thread => [thread.id, thread]));
+      await this.run(() => {
+        this.requireRunning();
+        this.live = live;
+        if (this.store.leader && !live.has(this.store.leader)) this.store.record('leader', null);
+      });
+    })();
+    this.refreshing = refresh;
+    const finished = () => { if (this.refreshing === refresh) this.refreshing = null; };
+    refresh.then(finished, finished);
+    return refresh;
   }
   requireRunning() {
     if (this.stopping) throw new CrossSessionError('BROKER_STOPPING', 'The broker is stopping. No new request was accepted.');
@@ -56,9 +70,8 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    const result = await this.run(async () => {
-      this.requireRunning();
-      await this.refresh();
+    await this.refresh();
+    const result = await this.run(() => {
       this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
       const caller = this.identity(sessionId);
@@ -109,10 +122,15 @@ export class MessagingService {
           if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new CrossSessionError('INVALID_ARGUMENT', 'limit must be an integer from 1 to 100.');
           const direction = args.direction ?? 'inbox';
           if (!['inbox', 'outbox', 'both'].includes(direction)) throw new CrossSessionError('INVALID_ARGUMENT', 'direction must be inbox, outbox, or both.');
-          return { messages: [...this.store.messages.values()].filter(m =>
-            ((direction !== 'outbox' && m.to.id === caller.id) || (direction !== 'inbox' && m.from.id === caller.id)) &&
-            (!args.unacknowledged_only || !m.acknowledgedAt)
-          ).slice(-limit) };
+          const messages = [];
+          for (const message of this.store.messages.values()) {
+            if (((direction !== 'outbox' && message.to.id === caller.id) || (direction !== 'inbox' && message.from.id === caller.id)) &&
+                (!args.unacknowledged_only || !message.acknowledgedAt)) {
+              messages.push(message);
+              if (messages.length > limit) messages.shift();
+            }
+          }
+          return { messages };
         }
         case 'acknowledge': {
           const message = this.store.messages.get(requireText(args.message_id, 'message_id', 200));
@@ -183,14 +201,16 @@ export class MessagingService {
   async drain() {
     do {
       await this.serial;
+      await Promise.allSettled(this.refreshing ? [this.refreshing] : []);
+      await Promise.allSettled([...this.idleChecks.values()]);
       await Promise.allSettled([...this.deliveries]);
-    } while (this.deliveries.size);
+    } while (this.refreshing || this.idleChecks.size || this.deliveries.size);
   }
   async hook(input, projectRoot) {
-    return this.run(async () => {
-      this.requireRunning();
-      if (input.agent_id) return {}; // Parent IDs in subagent hooks must not impersonate the root.
-      await this.refresh();
+    this.requireRunning();
+    if (input.agent_id) return {}; // Parent IDs in subagent hooks must not impersonate the root.
+    await this.refresh();
+    return this.run(() => {
       this.requireRunning();
       const id = input.session_id;
       this.identity(id);
@@ -200,28 +220,43 @@ export class MessagingService {
     });
   }
   async tick() {
-    if (!this.store.subscriptions.size && !this.store.leader) return;
-    const notifications = await this.run(async () => {
-      const notifications = [];
-      if (this.stopping) return notifications;
-      await this.refresh();
-      if (this.stopping) return notifications;
+    if (this.stopping || (!this.store.subscriptions.size && !this.store.leader)) return;
+    await this.refresh();
+    const checks = await this.run(() => {
+      const checks = [];
+      if (this.stopping) return checks;
       for (const sub of [...this.store.subscriptions.values()]) {
         const target = this.live.get(sub.to);
         if (!target || !this.live.has(sub.from)) { this.store.record('subscription_done', sub.id); continue; }
         if (target.status.type === 'active' && !sub.sawActive) this.store.record('subscription', { ...sub, sawActive: true });
         if (target.status.type === 'idle' && sub.sawActive) {
-          // turn/start can return before status changes from idle to active.
-          // Do not mistake that old idle status for the delivered turn ending.
-          if (sub.turnId && !await this.native.turnFinished(sub.to, sub.turnId)) continue;
-          // Consume before delivery: one shot, even if delivery is uncertain.
-          this.store.record('subscription_done', sub.id);
-          try { notifications.push(this.send(this.identity(sub.to), this.identity(sub.from), `Session ${sub.to} is idle. This is a status hint, not proof of task completion. Subscription: ${sub.id}`, { kind: 'idle-notification' })[pendingDelivery]); }
-          catch { /* The saved notification records the error. Never queue a retry. */ }
+          let check = this.idleChecks.get(sub.id);
+          if (!check) {
+            check = this.checkIdle(sub);
+            this.idleChecks.set(sub.id, check);
+            const finished = () => { if (this.idleChecks.get(sub.id) === check) this.idleChecks.delete(sub.id); };
+            check.then(finished, finished);
+          }
+          checks.push(check);
         }
       }
-      return notifications;
+      return checks;
     });
-    await Promise.allSettled(notifications);
+    await Promise.all(checks);
+  }
+  async checkIdle(sub) {
+    // A turn history query must not hold the state writer or block cancellation.
+    if (sub.turnId && !await this.native.turnFinished(sub.to, sub.turnId)) return;
+    if (this.stopping || this.store.subscriptions.get(sub.id) !== sub) return;
+    const latest = new Map((await this.native.list()).map(thread => [thread.id, thread]));
+    const notification = await this.run(() => {
+      if (this.stopping || this.store.subscriptions.get(sub.id) !== sub) return;
+      if (latest.get(sub.to)?.status.type !== 'idle' || !latest.has(sub.from)) return;
+      if (this.live.get(sub.to)?.status.type !== 'idle' || !this.live.has(sub.from)) return;
+      // Consume before delivery: one shot, even if delivery is uncertain.
+      this.store.record('subscription_done', sub.id);
+      return this.send(this.identity(sub.to), this.identity(sub.from), `Session ${sub.to} is idle. This is a status hint, not proof of task completion. Subscription: ${sub.id}`, { kind: 'idle-notification' });
+    });
+    await notification?.[pendingDelivery];
   }
 }
