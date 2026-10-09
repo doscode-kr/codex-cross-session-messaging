@@ -58,12 +58,33 @@ Metrics can change after the response.
 The metric output excludes message bodies, tokens, paths, and raw storage error messages.
 Use `doctor` separately to check access to the Codex daemon.
 
+## Inspect and cancel idle notifications
+
+Use `list_idle_notifications` from the session that requested the notifications.
+The result contains only that session's pending subscriptions.
+Each item has a `subscriptionId` that you can pass to `cancel_idle_notification`.
+Successful `send_message` calls with `notify_when_idle: true` also return the saved subscription ID.
+
+The default page contains at most 20 items.
+Use `limit` from 1 to 100 and pass `nextCursor` as `after_subscription_id` for the next page.
+The cursor is an exclusive ID boundary in character order.
+It still works after that subscription is canceled.
+Pages are not a fixed snapshot.
+New subscriptions before the cursor can be absent from later pages.
+Start again at the first page to inspect the current set.
+
+This query requires a loaded session and access to the Codex daemon.
+The query does not save leader cleanup or change subscriptions.
+Normal client startup can start the broker and recover its journal.
+Use `broker-status` for inspection that must not start the broker.
+See [the tool reference](MANUAL.md) for arguments and results.
+
 ## Update from the same source directory
 
 1. Save the release tag or commit you currently use.
 2. Get the new release in the registered source directory.
 3. Read [CHANGELOG.md](../CHANGELOG.md).
-4. Cancel outstanding idle notification subscriptions from their original sessions.
+4. If the journal is healthy, cancel outstanding idle subscriptions from their original sessions.
 5. Close sessions that loaded the old plugin.
 6. Stop the message broker from an external shell.
 
@@ -94,6 +115,7 @@ Use `doctor` separately to check access to the Codex daemon.
 12. Run `npm run doctor`.
 
 The source directory and the installed cache are separate.
+If the journal has failed, use [storage recovery](#recover-from-a-journal-failure) before continuing the update.
 Changing the source alone does not confirm a cache update.
 This procedure keeps the message data.
 The installer does not restart the running daemon.
@@ -108,7 +130,7 @@ The installer returns an error in that case.
 
 1. Read the installed plugin list with `codex plugin list --json`.
 2. Check whether another installed plugin uses `cross-session-local`.
-3. Cancel outstanding idle notification subscriptions from their original sessions.
+3. If the journal is healthy, cancel outstanding idle subscriptions from their original sessions.
 4. Close sessions that loaded the old plugin.
 5. Stop the old broker from an external shell with `node plugins/cross-session/src/cli.mjs broker-stop`.
 6. Remove `cross-session@cross-session-local` with `codex plugin remove`.
@@ -123,7 +145,9 @@ Use a separate `CODEX_HOME` if you need the new source without changing that reg
 
 Use the same `CODEX_HOME` for each command.
 Keep the old source until the new installation passes your checks.
-To go back, install the saved release from that source.
+To go back, use the saved release with the [same-source update procedure](#update-from-the-same-source-directory).
+If you use another source directory, follow the source-change procedure above.
+These procedures remove the installed cache before installation.
 
 ## Recover an unavailable source directory
 
@@ -152,7 +176,8 @@ Do not delete Codex settings, plugin registrations, caches, or message data to r
 If another installed plugin uses the marketplace, keep its registration and source.
 Use a separate `CODEX_HOME` when you cannot safely change the existing registration.
 
-Before you change or remove the plugin, cancel idle notifications from their original sessions.
+With a healthy journal, cancel idle notifications from their original sessions before you change or remove the plugin.
+If the journal has failed, use the storage recovery procedure below.
 Close sessions that loaded the old plugin before you stop its broker.
 If the old checkout is unavailable, you can run `node plugins/cross-session/src/cli.mjs broker-stop` from a restored or new checkout.
 Use the same `CODEX_HOME` and `CROSS_SESSION_HOME` settings that the old broker used.
@@ -187,6 +212,56 @@ One very large event can still require substantial memory.
 Message reads can use more disk I/O because bodies are read on demand.
 Use [the removal guide](UNINSTALL.md) for an explicit data removal procedure.
 
+## Recover from a journal failure
+
+A failed journal blocks cancellation because cancellation is a saved change.
+Do not repeat cancellation as a prerequisite for stopping a failed broker.
+Before recovery, stop new plugin calls in all sessions that share the message directory.
+Wait for existing calls to return.
+Keep the original subscribing sessions loaded for the checks after recovery.
+Do not close those sessions or trigger plugin hooks during recovery.
+Calls and hooks can start an offline broker before the storage problem is corrected.
+Resume plugin calls only after the explicit start in step 5.
+
+1. Inspect the broker with `node plugins/cross-session/src/cli.mjs broker-status`.
+2. Stop it with `node plugins/cross-session/src/cli.mjs broker-stop`.
+3. Keep the journal for recovery.
+4. Correct the storage problem.
+5. Start the broker from an external terminal with `node plugins/cross-session/src/broker.mjs`.
+6. Inspect pending notifications with `list_idle_notifications` from their original subscribing sessions.
+7. Cancel unwanted subscriptions with `cancel_idle_notification`.
+
+If stop returns `DELIVERIES_ACTIVE`, wait for those delivery results before repeating step 2.
+Use the same message directory throughout this procedure.
+Stopping the broker does not cancel saved subscriptions or mark messages complete.
+Do not remove complete journal events to bypass a startup error.
+This procedure does not restart the Codex daemon.
+
+## Delivery result storage errors
+
+Codex can accept a message before the broker saves its result.
+A storage error does not cancel that delivery.
+Use the returned `messageId` to check the same message after storage recovery.
+
+| Error or detail | Meaning and action |
+|---|---|
+| `STORE_UNAVAILABLE`, `requestOutcome: not_submitted` | This waiting delivery did not start. Keep its message ID. |
+| `DELIVERY_UNCERTAIN`, `requestOutcome: unknown` | The broker cannot confirm the saved result. Do not resend automatically. |
+| `DELIVERY_FAILED`, `requestOutcome: rejected` | A known rejection or delivery precondition failure occurred. A failed journal update does not remove that known result. |
+| `IDLE_SUBSCRIPTION_UNCERTAIN` | Message acceptance was saved. Only the idle subscription result is unknown. Do not resend the message. |
+
+`IDLE_SUBSCRIPTION_UNCERTAIN` includes the subscription ID and `idleNotificationOutcome: unknown`.
+A failed sync can still leave a complete subscription event on disk.
+Check the subscription after recovery before creating another one.
+The response preserves any saved acknowledgment.
+Neither acceptance nor an acknowledgment proves task completion.
+
+Storage diagnostics include an error code, not the storage error's raw text.
+An initial message write failure can occur before the broker returns a message ID.
+Keep the journal in that case too.
+Recovery can mark an unfinished saved message as `uncertain`.
+Recovery does not resend that message.
+
 ## Broker response errors
 
 `BROKER_TIMEOUT` means the client did not receive a complete response.
@@ -218,7 +293,7 @@ The shutdown response must confirm `stopped: true`.
 | Session missing | Confirm that the session is a loaded independent root session. |
 | Name or project information missing | Review hook trust and register the session name. |
 | Delivery uncertain | Read the outbox before another send. |
-| Broker stop refused | Cancel your idle notifications before shutdown. |
+| Broker stop refused | Wait for active deliveries. Cancel your idle notifications if the journal is healthy. |
 | Marketplace source conflict | Use the source change procedure above. |
 | Plugin list fails after a source directory moves | Restore the recorded source path with the recovery procedure above. |
 
@@ -228,7 +303,13 @@ Remove private information before you share the output.
 
 The broker shutdown command is `node plugins/cross-session/src/cli.mjs broker-stop`.
 It does not stop the Codex daemon.
-It refuses shutdown while idle notification subscriptions remain.
+With a healthy journal, it refuses shutdown while idle notification subscriptions remain.
+After a recorded journal failure, an explicit stop preserves those subscriptions and permits shutdown.
+It does not cancel subscriptions or delete journal events.
+Pending deliveries still block shutdown.
+Late idle checks cannot start a delivery after shutdown begins.
+Preserved subscriptions can resume their checks after storage recovery and broker restart.
+The broker does not automatically stop or restart itself to repair a storage failure.
 Use [the removal guide](UNINSTALL.md) for removal and data cleanup.
 
 If `broker-stop` returns `DELIVERIES_ACTIVE`:
