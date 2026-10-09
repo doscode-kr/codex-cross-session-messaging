@@ -203,6 +203,14 @@ Windows의 8.3 경로 별칭이 있는 메시지 폴더는 수동 데이터 삭�
 npm run doctor
 ```
 
+메시지 브로커를 시작하지 않고 상태를 확인합니다.
+
+```text
+node plugins/cross-session/src/cli.mjs broker-status
+```
+
+수치 정의와 오류는 [브로커 상태 안내](docs/OPERATIONS.ko.md#메시지-브로커-상태-확인)를 확인합니다.
+
 다음 명령은 저장소 검사를 실행합니다.
 
 ```text

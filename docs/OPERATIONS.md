@@ -23,6 +23,41 @@ An isolated integration check uses a mock model server.
 It does not prove that a live model will understand or complete a peer request.
 The installer does not upgrade or restart the running Codex daemon.
 
+## Inspect the message broker
+
+Run this command from the source directory:
+
+```text
+node plugins/cross-session/src/cli.mjs broker-status
+```
+
+This command only reads the existing broker state.
+It does not create files or start the broker.
+It does not query or restart the Codex daemon.
+
+| Result | Meaning |
+|---|---|
+| `offline`, `STATE_MISSING` | The state directory or saved token is absent. |
+| `offline`, `BROKER_OFFLINE` | No broker accepted the connection. |
+| `running` | The broker returned a valid health response. |
+| `degraded` | The broker recorded a journal failure. New writes are blocked. |
+| `stopping` | The broker is stopping. |
+| `diagnostics: null` | The running broker does not provide these metrics. Its journal condition is unknown. |
+
+Offline results use exit code 0.
+Authentication, access, and response errors use exit code 1.
+These errors are not reported as offline.
+The command does not repair failures or resend messages.
+
+`journal.committedBytes` is the last confirmed journal position in memory.
+It is not the current file size.
+A partial write can leave an unconfirmed file tail.
+`counts.registeredSessions` counts stored registrations, not live sessions.
+Other counts show stored messages, active idle subscriptions, pending deliveries, and pending idle checks.
+Metrics can change after the response.
+The metric output excludes message bodies, tokens, paths, and raw storage error messages.
+Use `doctor` separately to check access to the Codex daemon.
+
 ## Update from the same source directory
 
 1. Save the release tag or commit you currently use.
@@ -157,6 +192,7 @@ Use [the removal guide](UNINSTALL.md) for an explicit data removal procedure.
 `BROKER_TIMEOUT` means the client did not receive a complete response.
 This includes a timeout during the response body and a detected connection failure.
 `BROKER_RESPONSE_INVALID` means the response has invalid JSON or an invalid structure.
+It also covers HTTP redirects. The client does not follow redirects or repeat the request at another address.
 Neither error confirms whether the broker processed the request.
 The client does not repeat message, hook, or shutdown requests after these errors.
 The client uses one timeout for the connection and response body.
