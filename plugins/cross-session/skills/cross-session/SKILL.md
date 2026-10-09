@@ -51,7 +51,9 @@ The plugin cannot hide these host displays or guarantee that a model will stop r
 The `detail` option controls tool result text only. It does not change delivery or permissions.
 
 Only call `claim_leader` when the user assigns this session as leader.
-One live root session can be leader across this computer, including all projects.
+Only one live root session can be leader in each shared message environment on this computer.
+All projects that use that environment share the role.
+Separate message directories have separate leader state.
 Only that session can call `transfer_leader` or `release_leader`.
 The broker releases leadership when the session leaves the shared daemon.
 Use `to: "leader"` to address the current leader.
