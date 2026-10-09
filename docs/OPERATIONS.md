@@ -129,6 +129,29 @@ The installer checks the plugin list before it installs dependencies.
 The dry run shows planned commands only.
 It does not check the Codex plugin list or confirm that source recovery succeeded.
 
+## Journal memory and growth
+
+The broker restores complete journal lines one at a time.
+It keeps message metadata in memory.
+It reads message bodies from `events.jsonl` when a response needs them.
+It does not keep a body cache.
+Existing messages and complete event history are retained.
+State writes with identical metadata do not add another event.
+A changed session timestamp or acknowledgment timestamp still adds an event.
+Repeated writes are therefore not a complete audit of every attempt.
+
+An invalid complete event stops startup.
+An incomplete last line is removed only after all earlier complete events are checked.
+A body read failure stops later writes.
+Keep the journal and correct the storage problem before restarting the broker.
+
+The broker does not compact the journal or expire messages automatically.
+Disk use and restart time still increase with stored events.
+Metadata memory still increases with message count.
+One very large event can still require substantial memory.
+Message reads can use more disk I/O because bodies are read on demand.
+Use [the removal guide](UNINSTALL.md) for an explicit data removal procedure.
+
 ## Diagnostics
 
 | Problem | Check |
