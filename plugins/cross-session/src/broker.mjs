@@ -12,7 +12,12 @@ export async function startBroker({ config = settings(), native = new NativeAdap
   const token = authToken(config.root);
   let store, service, timer, polling = false;
   const server = createServer(async (req, res) => {
-    const reply = (status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
+    const reply = (status, body) => {
+      // Reading a lazy journal body can fail. Keep headers untouched until then.
+      const json = JSON.stringify(body);
+      res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(json);
+    };
     const supplied = req.headers.authorization ?? '';
     const expected = `Bearer ${token}`;
     if (Buffer.byteLength(supplied) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) return reply(403, { code: 'AUTH_FAILED', message: 'The local port belongs to another broker or the token does not match.' });
