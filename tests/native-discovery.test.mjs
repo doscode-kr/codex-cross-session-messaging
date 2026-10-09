@@ -119,6 +119,47 @@ test('loaded-list failures are not retried', async () => {
   assert.equal(calls, 1);
 });
 
+test('repeated or cyclic session cursors fail before reading a partial list', async () => {
+  for (const cycle of [['one', 'one'], ['one', 'two', 'one']]) {
+    let pages = 0;
+    const native = new NativeAdapter({ rpc: { async request(method) {
+      assert.equal(method, 'thread/loaded/list');
+      assert.ok(pages < cycle.length, 'discovery must stop at the repeated cursor');
+      return { data: [`session-${pages}`], nextCursor: cycle[pages++] };
+    } } });
+    await assert.rejects(native.list(), { code: 'NATIVE_REJECTED', message: 'The daemon repeated a session list cursor.' });
+    assert.equal(pages, cycle.length);
+  }
+});
+
+test('overlapping session pages read each session once in first-seen order', async () => {
+  const pages = new Map([
+    [undefined, { data: ['a', 'b', 'a'], nextCursor: 'next' }],
+    ['next', { data: ['b', 'c'], nextCursor: null }]
+  ]);
+  const { native, calls } = discovery([], async id => thread(id), pages);
+  assert.deepEqual((await native.list()).map(value => value.id), ['a', 'b', 'c']);
+  for (const id of ['a', 'b', 'c']) assert.equal(reads(calls, id).length, 1);
+});
+
+test('a session cursor cycle cannot clear a leader or consume a subscription', async t => {
+  const { native, service, store } = fixture(t);
+  await service.call('claim_leader', {}, 'session-a');
+  await service.call('send_message', { to: 'session-b', message: 'work', notify_when_idle: true }, 'session-a');
+  const previousLive = service.live;
+  const subscriptions = [...store.subscriptions.values()];
+  const loop = new NativeAdapter({ rpc: { async request(method) {
+    assert.equal(method, 'thread/loaded/list');
+    return { data: [], nextCursor: 'same' };
+  } } });
+  native.list = loop.list.bind(loop);
+  await assert.rejects(service.tick(), { code: 'NATIVE_REJECTED' });
+  assert.equal(service.live, previousLive);
+  assert.equal(store.leader, 'session-a');
+  assert.deepEqual([...store.subscriptions.values()], subscriptions);
+  assert.equal(native.sent.length, 1);
+});
+
 test('direct reads and delivery do not acquire discovery retries', async () => {
   for (const action of [native => native.read('a'), native => native.deliver({ id: 'message', to: { id: 'a' } })]) {
     const error = emptyError();

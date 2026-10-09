@@ -41,13 +41,17 @@ export class NativeAdapter {
   }
   async request(method, params) { return (await this.connect()).request(method, params); }
   async list() {
-    const ids = [];
+    const uniqueIds = new Set();
+    const seen = new Set();
     let cursor;
     do {
+      if (seen.has(cursor)) throw new CrossSessionError('NATIVE_REJECTED', 'The daemon repeated a session list cursor.');
+      seen.add(cursor);
       const page = await this.request('thread/loaded/list', { limit: 100, ...(cursor ? { cursor } : {}) });
-      ids.push(...page.data);
+      for (const id of page.data) uniqueIds.add(id);
       cursor = page.nextCursor;
     } while (cursor);
+    const ids = [...uniqueIds];
     const threads = [];
     for (let i = 0; i < ids.length; i += 10) {
       const results = await Promise.allSettled(ids.slice(i, i + 10).map(id => this.readForDiscovery(id)));
