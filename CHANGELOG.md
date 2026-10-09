@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+- Add a read-only `broker-status` command with journal and pending-work metrics.
+  Do not create local state or start the broker during inspection.
+- Add permission-checked cursors to read older message history pages.
+- Preserve UTF-8 across hook input chunks and avoid state creation for ignored hooks.
+- Ignore inherited Git path variables when a hook identifies its project.
+- Return journal body read errors before sending HTTP response headers.
+- Classify incomplete or invalid broker responses without repeating the request.
+  Reject HTTP redirects without forwarding message bodies.
+
 - Close client HTTP connections to avoid stale sockets after a broker restart.
   Do not resend requests after a lost response.
 - Replay journals in chunks and read message bodies on demand.

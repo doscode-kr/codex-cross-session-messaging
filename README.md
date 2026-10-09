@@ -195,6 +195,14 @@ Check the running daemon without sending messages:
 npm run doctor
 ```
 
+Inspect the message broker without starting it:
+
+```text
+node plugins/cross-session/src/cli.mjs broker-status
+```
+
+See [broker status results](docs/OPERATIONS.md#inspect-the-message-broker) for metric definitions and errors.
+
 Run the standard repository checks:
 
 ```text
