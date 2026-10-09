@@ -152,3 +152,22 @@ test('all tool summaries keep delivery, receipt, leadership, and idle states sep
     assert.match(result.content[0].text, expected);
   }
 });
+
+test('history cursors reach the broker and remain available in short and detailed MCP results', async () => {
+  const data = { messages: [{ id: 'older', from: { id: 'b' }, to: { id: 'a' }, status: 'uncertain', text: 'body' }], nextCursor: 'older' };
+  const client = { async call(name, args, session) {
+    assert.equal(name, 'read_messages');
+    assert.equal(session, 'a');
+    assert.deepEqual(args, { before_message_id: 'anchor', limit: 1 });
+    return data;
+  } };
+  const short = await handleMcp(call('read_messages', { before_message_id: 'anchor', limit: 1 }), client);
+  assert.equal(short.isError, false);
+  assert.deepEqual(short.structuredContent, data);
+  assert.match(short.content[0].text, /Older messages: before_message_id: "older"/);
+  const detailed = await handleMcp(call('read_messages', { before_message_id: 'anchor', limit: 1, detail: true }), client);
+  assert.deepEqual(JSON.parse(detailed.content[0].text), data);
+  const invalid = await handleMcp(call('read_messages', { before_message_id: 42 }), { call() { assert.fail('Unexpected broker call'); } });
+  assert.equal(invalid.isError, true);
+  assert.equal(invalid.structuredContent.code, 'INVALID_ARGUMENT');
+});
