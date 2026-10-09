@@ -11,10 +11,11 @@ async function projectRoot(cwd) {
     return stdout.trim(); // Shared .git directory groups Git worktrees together.
   } catch { return cwd; }
 }
-export async function runHook(input, client = new BrokerClient({ timeoutMs: 2500 })) {
+export async function runHook(input, client) {
   if (input.agent_id) return {};
   const event = input.hook_event_name;
   if (!['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'Stop', 'Interrupt'].includes(event)) return {};
+  client ??= new BrokerClient({ timeoutMs: 2500 });
   await client.hook({ session_id: input.session_id, permission_mode: input.permission_mode, hook_event_name: event }, event === 'SessionStart' ? await projectRoot(input.cwd) : undefined);
   if (event === 'SessionStart') return {
     hookSpecificOutput: {
@@ -24,11 +25,20 @@ export async function runHook(input, client = new BrokerClient({ timeoutMs: 2500
   };
   return {};
 }
+export async function readHookInput(stream) {
+  const parts = [];
+  let size = 0;
+  for await (const chunk of stream) {
+    const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += part.length;
+    if (size > 131072) throw new Error('Hook input exceeds 128 KiB.');
+    parts.push(part);
+  }
+  return JSON.parse(Buffer.concat(parts, size).toString('utf8'));
+}
 export async function main() {
   try {
-    let raw = '';
-    for await (const chunk of process.stdin) { raw += chunk; if (Buffer.byteLength(raw) > 131072) throw new Error('Hook input exceeds 128 KiB.'); }
-    process.stdout.write(JSON.stringify(await runHook(JSON.parse(raw))) + '\n');
+    process.stdout.write(JSON.stringify(await runHook(await readHookInput(process.stdin))) + '\n');
   } catch (error) {
     // Fail visibly without blocking unrelated work or fabricating registration.
     console.error(`cross-session hook: ${error.message}`);
