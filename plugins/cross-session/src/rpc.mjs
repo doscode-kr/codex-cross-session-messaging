@@ -37,7 +37,15 @@ export class RpcSocket extends EventEmitter {
     ws.on('message', line => {
       let value;
       try { value = JSON.parse(line); } catch { return; }
-      if (value.id !== undefined && !value.method) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+      if (value.method !== undefined && typeof value.method !== 'string') return;
+      if (value.id !== undefined && value.id !== null && typeof value.id !== 'string' && typeof value.id !== 'number') return;
+      if (typeof value.id === 'number' && !Number.isFinite(value.id)) return;
+      if (value.id !== undefined && value.method === undefined) {
+        const hasResult = Object.hasOwn(value, 'result');
+        const hasError = Object.hasOwn(value, 'error');
+        if (hasResult === hasError || (hasError && (!value.error || typeof value.error !== 'object' ||
+            Array.isArray(value.error) || !Number.isInteger(value.error.code) || typeof value.error.message !== 'string'))) return;
         const pending = this.pending.get(value.id);
         if (!pending) return;
         this.pending.delete(value.id);
@@ -45,11 +53,11 @@ export class RpcSocket extends EventEmitter {
         if (value.error) {
           pending.reject(new CrossSessionError('NATIVE_REJECTED', value.error.message, { rpcCode: value.error.code, rpcData: value.error.data }));
         } else pending.resolve(value.result);
-      } else if (value.method && value.id !== undefined) {
+      } else if (value.method !== undefined && value.id !== undefined) {
         // Approval requests can be broadcast to subscribed clients. A rejection
         // here could race the user's answer in the recipient CLI. Stay passive.
         this.emit('serverRequest', value);
-      } else if (value.method) this.emit('notification', value);
+      } else if (value.method !== undefined) this.emit('notification', value);
     });
     ws.on('error', error => this.fail(error));
     ws.on('close', () => this.fail(new CrossSessionError('NATIVE_DISCONNECTED', 'The daemon connection closed.')));
@@ -66,7 +74,12 @@ export class RpcSocket extends EventEmitter {
         reject(new CrossSessionError('NATIVE_TIMEOUT', `No reply to ${method}. The delivery outcome may be unknown.`));
       }, this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      this.write({ id, method, params });
+      try { this.write({ id, method, params }); }
+      catch (error) {
+        this.pending.delete(id);
+        clearTimeout(timer);
+        reject(error);
+      }
     });
   }
   fail(error) {

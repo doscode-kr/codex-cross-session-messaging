@@ -88,6 +88,14 @@ export function serveMcp() {
     let request;
     try { request = JSON.parse(line); }
     catch { write({ id: null, error: { code: -32700, message: 'Invalid JSON' } }); return; }
+    if (!request || typeof request !== 'object' || Array.isArray(request) ||
+        request.jsonrpc !== '2.0' || typeof request.method !== 'string' ||
+        (request.id !== undefined && request.id !== null && typeof request.id !== 'string' && typeof request.id !== 'number') ||
+        (typeof request.id === 'number' && !Number.isFinite(request.id)) ||
+        (request.params !== undefined && (!request.params || typeof request.params !== 'object'))) {
+      write({ id: null, error: { code: -32600, message: 'Invalid request' } });
+      return;
+    }
     if (request.id === undefined) return;
     try { write({ id: request.id, result: await handleMcp(request, client) }); }
     catch (error) { write({ id: request.id, error: { code: -32601, message: error.message } }); }
