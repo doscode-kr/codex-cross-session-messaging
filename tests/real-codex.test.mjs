@@ -11,6 +11,9 @@ import { mkdirSync } from 'node:fs';
 import { temporary } from './helpers.mjs';
 import { NativeAdapter, resolveCodex } from '../plugins/cross-session/src/native.mjs';
 import { RpcSocket } from '../plugins/cross-session/src/rpc.mjs';
+import { startBroker } from '../plugins/cross-session/src/broker.mjs';
+import { BrokerClient } from '../plugins/cross-session/src/client.mjs';
+import { handleMcp } from '../plugins/cross-session/src/mcp.mjs';
 
 const require = createRequire(new URL('../plugins/cross-session/package.json', import.meta.url));
 const WebSocket = require('ws');
@@ -26,9 +29,10 @@ async function freePort() {
   await new Promise(resolve => server.close(resolve));
   return port;
 }
-test('real isolated Codex steers a busy root and wakes an idle root with peer context', { skip: process.env.CROSS_SESSION_REAL_CODEX_TEST !== '1', timeout: 45000 }, async t => {
-  let child, rpc, model;
+test('real isolated Codex delivers busy and idle peer messages and direct worker collaboration', { skip: process.env.CROSS_SESSION_REAL_CODEX_TEST !== '1', timeout: 60000 }, async t => {
+  let child, rpc, model, broker;
   const root = temporary(t, async () => {
+    await broker?.close();
     rpc?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const ended = new Promise(resolve => child.once('exit', resolve)); child.kill(); await ended; }
     if (model) await new Promise(resolve => { model.close(resolve); model.closeAllConnections(); });
@@ -87,6 +91,7 @@ test('real isolated Codex steers a busy root and wakes an idle root with peer co
   const start = () => rpc.request('thread/start', { cwd: root, model: 'fake-model', approvalPolicy: 'never', sandbox: 'read-only' });
   const a = (await start()).thread;
   const b = (await start()).thread;
+  const leader = (await start()).thread;
   const inventory = await rpc.request('mcpServerStatus/list', { threadId: b.id });
   assert.ok(inventory.data.some(server => Object.values(server.tools ?? {}).some(tool => tool.name === 'send_message')), 'Installed plugin exposes its messaging tool in a real Codex thread');
   const native = new NativeAdapter({ rpc });
@@ -106,4 +111,49 @@ test('real isolated Codex steers a busy root and wakes an idle root with peer co
   assert.ok(inputs.includes('busy-peer-marker-검증'), 'Busy peer body reached the model request');
   assert.ok(inputs.includes('idle-peer-marker-검증'), 'Idle peer body reached the model request');
   assert.notEqual(a.id, b.id);
+
+  const runtime = join(root, 'broker');
+  mkdirSync(runtime);
+  const brokerConfig = { root: runtime, instance: 'isolated-collaboration', port: await freePort() };
+  broker = await startBroker({ config: brokerConfig, native, intervalMs: 0 });
+  const client = new BrokerClient({ config: brokerConfig, autoStart: false });
+  const call = (sessionId, name, args = {}) => handleMcp({ method: 'tools/call', params: {
+    name, arguments: args, _meta: { 'x-codex-turn-metadata': { thread_id: sessionId } }
+  } }, client);
+  const success = async (sessionId, name, args) => {
+    const result = await call(sessionId, name, args);
+    assert.equal(result.isError, false, JSON.stringify(result.structuredContent));
+    return result.structuredContent;
+  };
+  await success(leader.id, 'claim_leader');
+  const direct = await success(a.id, 'send_message', { to: b.id, message: 'private-worker-question-검증' });
+  assert.equal(direct.delivery.method, 'turn/start');
+  assert.equal(direct.acknowledged, false);
+  assert.equal(direct.taskCompleted, false);
+  await waitFor(() => requests.some(request => JSON.stringify(request.input).includes('private-worker-question-검증')));
+  await waitFor(async () => (await native.read(b.id)).status.type === 'idle');
+  const reply = await success(b.id, 'reply', { message_id: direct.messageId, message: 'private-worker-answer-검증' });
+  await waitFor(() => requests.some(request => JSON.stringify(request.input).includes('private-worker-answer-검증')));
+  await waitFor(async () => (await native.read(a.id)).status.type === 'idle');
+  const savedReply = await success(a.id, 'get_message', { message_id: reply.messageId });
+  assert.equal(savedReply.to.id, a.id);
+  assert.equal(savedReply.replyTo, direct.messageId);
+  for (const name of ['get_message', 'acknowledge']) {
+    const denied = await call(leader.id, name, { message_id: direct.messageId });
+    assert.equal(denied.isError, true);
+    assert.equal(denied.structuredContent.code, 'MESSAGE_NOT_FOUND');
+  }
+  assert.equal((await success(leader.id, 'read_messages')).messages.length, 0);
+  const report = await success(b.id, 'send_message', { to: 'leader', message: 'agreed-worker-summary-검증' });
+  await waitFor(() => requests.some(request => JSON.stringify(request.input).includes('agreed-worker-summary-검증')));
+  await waitFor(async () => (await native.read(leader.id)).status.type === 'idle');
+  const reports = (await success(leader.id, 'read_messages')).messages;
+  assert.deepEqual(reports.map(message => message.id), [report.messageId]);
+  assert.equal(reports[0].from.id, b.id);
+  assert.equal(reports[0].to.id, leader.id);
+  const leaderInput = JSON.stringify(requests.find(request => JSON.stringify(request.input).includes('agreed-worker-summary-검증')).input);
+  assert.ok(!leaderInput.includes('private-worker-question-검증'));
+  assert.ok(!leaderInput.includes('private-worker-answer-검증'));
+  assert.equal(broker.service.store.messages.size, 3);
+  assert.equal(broker.service.store.leader, leader.id);
 });

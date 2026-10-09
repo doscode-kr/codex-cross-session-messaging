@@ -45,7 +45,7 @@ export function summarizeResult(name, result) {
       break;
     case 'register_session': summary = `Session ${result.id}: ${label(result.name, 120)}; ${result.role}.`; break;
     case 'send_message':
-    case 'reply': summary = `Message ${result.messageId}: ${result.status}. Receipt and task completion are not confirmed.`; break;
+    case 'reply': summary = `Message ${result.messageId}: ${result.status}. ${result.acknowledged === true ? 'Receipt confirmed. Task completion is not confirmed.' : 'Receipt and task completion are not confirmed.'}`; break;
     case 'read_messages': summary = [`${result.messages.length} messages.`, ...result.messages.map(messageSummary)].join('\n'); break;
     case 'get_message': summary = messageSummary(result); break;
     case 'acknowledge': summary = `Message ${result.id}: receipt confirmed. Task completion is not confirmed.`; break;

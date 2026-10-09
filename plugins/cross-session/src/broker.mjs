@@ -31,7 +31,7 @@ export async function startBroker({ config = settings(), native = new NativeAdap
       if (req.url === '/call') return reply(200, await service.call(data.method, data.args, data.sessionId));
       if (req.url === '/hook') return reply(200, await service.hook(data.input, data.projectRoot));
       if (req.url === '/shutdown') {
-        if (service.store.subscriptions.size) throw new CrossSessionError('SUBSCRIPTIONS_ACTIVE', 'Cancel idle subscriptions before stopping the broker.');
+        await service.requestShutdown();
         reply(200, { stopped: true });
         setImmediate(() => close());
         return;
@@ -49,15 +49,18 @@ export async function startBroker({ config = settings(), native = new NativeAdap
     try { await service.tick(); } catch { /* Existing daemon can be offline; state remains intact. */ }
     finally { polling = false; }
   }, intervalMs);
-  let closed = false;
-  async function close() {
-    if (closed) return;
-    closed = true;
+  let closing;
+  function close() {
+    if (closing) return closing;
+    service.stopping = true;
     clearInterval(timer);
-    await new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); });
-    await service.serial;
-    native.close();
-    store.close();
+    closing = (async () => {
+      await new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); });
+      await service.drain();
+      native.close();
+      store.close();
+    })();
+    return closing;
   }
   return { config, server, service, close };
 }
