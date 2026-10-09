@@ -9,6 +9,8 @@ import { MessagingService } from './service.mjs';
 import { errorData, CrossSessionError } from './errors.mjs';
 import { brokerDiagnostics } from './diagnostics.mjs';
 
+const requestDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
 export async function startBroker({ config = settings(), native = new NativeAdapter(), intervalMs = 1000 } = {}) {
   const token = authToken(config.root);
   let store, service, timer, polling = false;
@@ -31,7 +33,10 @@ export async function startBroker({ config = settings(), native = new NativeAdap
         if (size > 131072) throw new CrossSessionError('REQUEST_TOO_LARGE', 'Request exceeds 128 KiB.');
         parts.push(part);
       }
-      const data = JSON.parse(Buffer.concat(parts, size).toString('utf8'));
+      let text;
+      try { text = requestDecoder.decode(Buffer.concat(parts, size)); }
+      catch { throw new CrossSessionError('INVALID_REQUEST', 'Request body must use valid UTF-8.'); }
+      const data = JSON.parse(text);
       if (data.instance !== config.instance) throw new CrossSessionError('INSTANCE_MISMATCH', 'Another messaging state directory uses this port.');
       if (req.url === '/health') return reply(200, { version: '0.1.0', instance: config.instance, pid: process.pid,
         ...(data.diagnostics === true ? { diagnostics: brokerDiagnostics(service) } : {}) });
