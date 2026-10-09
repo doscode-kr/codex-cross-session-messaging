@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Stop session discovery when the daemon repeats a page cursor.
+  Read overlapping session IDs only once per discovery.
 - Move session and idle history queries outside serial state updates.
   Preserve cancellation and shutdown checks before sending late idle notifications.
 - Keep message history selections within the requested result limit.
