@@ -13,6 +13,10 @@ export function displayStatus(thread) {
   }
   return thread.status?.type ?? 'unknown';
 }
+function isEmptyRollout(error) {
+  return error.code === 'NATIVE_REJECTED' && error.details?.rpcCode === -32603 &&
+    /^failed to read thread: thread-store internal error: failed to read session metadata (.+): rollout at \1 is empty$/.test(error.message);
+}
 export class NativeAdapter {
   constructor({ rpc, info } = {}) { this.rpc = rpc; this.info = info; this.connecting = null; }
   async connect() {
@@ -46,7 +50,7 @@ export class NativeAdapter {
     } while (cursor);
     const threads = [];
     for (let i = 0; i < ids.length; i += 10) {
-      const results = await Promise.allSettled(ids.slice(i, i + 10).map(id => this.read(id)));
+      const results = await Promise.allSettled(ids.slice(i, i + 10).map(id => this.readForDiscovery(id)));
       for (const result of results) {
         if (result.status === 'fulfilled') {
           const thread = result.value;
@@ -60,6 +64,14 @@ export class NativeAdapter {
     return threads;
   }
   async read(id) { return (await this.request('thread/read', { threadId: id, includeTurns: false })).thread; }
+  async readForDiscovery(id) {
+    try { return await this.read(id); }
+    catch (error) {
+      if (!isEmptyRollout(error)) throw error;
+      // Retry one read only. An incomplete list must not remove live sessions.
+      return this.read(id);
+    }
+  }
   async activeTurn(id) {
     // Live turn history is read only. Do not resume or start a second executor.
     try {
