@@ -46,7 +46,7 @@ export class MessagingService {
   async requestShutdown() {
     return this.run(() => {
       this.requireRunning();
-      if (this.store.subscriptions.size) throw new CrossSessionError('SUBSCRIPTIONS_ACTIVE', 'Cancel idle subscriptions before stopping the broker.');
+      if (this.store.subscriptions.size && !this.store.failure) throw new CrossSessionError('SUBSCRIPTIONS_ACTIVE', 'Cancel idle subscriptions before stopping the broker.');
       if (this.deliveries.size) throw new CrossSessionError('DELIVERIES_ACTIVE', 'Wait for current message deliveries before stopping the broker.');
       this.stopping = true;
     });
@@ -90,7 +90,7 @@ export class MessagingService {
           return this.identity(caller.id);
         }
         case 'claim_leader': {
-          if (this.store.leader && this.store.leader !== caller.id) throw new CrossSessionError('LEADER_EXISTS', 'Only one session can be leader on this computer.', { leader: this.store.leader });
+          if (this.store.leader && this.store.leader !== caller.id) throw new CrossSessionError('LEADER_EXISTS', 'Only one session can be leader in this message environment.', { leader: this.store.leader });
           this.store.record('leader', caller.id);
           return { leader: caller.id };
         }
