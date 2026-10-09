@@ -2,6 +2,15 @@ import { fstatSync, readSync } from 'node:fs';
 import { CrossSessionError } from './errors.mjs';
 
 const chunkSize = 64 * 1024;
+// Keep a leading BOM visible to JSON.parse, as Buffer.toString did.
+const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+function parseEvent(buffer) {
+  let text;
+  try { text = decoder.decode(buffer); }
+  catch { throw new CrossSessionError('STORE_READ_FAILED', 'The message journal contains invalid UTF-8.'); }
+  return JSON.parse(text);
+}
 
 function readFailure() {
   return new CrossSessionError('STORE_READ_FAILED', 'The message journal could not be read completely.');
@@ -20,7 +29,7 @@ export function replayJournal(fd, apply) {
       if (newline < 0 || newline >= length) break;
       const fragment = buffer.subarray(start, newline);
       const line = fragments.length ? Buffer.concat([...fragments, fragment], fragmentBytes + fragment.length) : fragment;
-      if (line.length) apply(JSON.parse(line.toString('utf8')), { offset: lineStart, length: position + newline - lineStart });
+      if (line.length) apply(parseEvent(line), { offset: lineStart, length: position + newline - lineStart });
       start = newline + 1;
       lineStart = position + start;
       fragments = [];
@@ -45,7 +54,7 @@ export function readJournalEvent(fd, { offset, length }) {
     if (!count) throw readFailure();
     read += count;
   }
-  return JSON.parse(buffer.toString('utf8'));
+  return parseEvent(buffer);
 }
 
 export function setJournalText(message, reader, location) {
