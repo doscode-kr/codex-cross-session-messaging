@@ -17,6 +17,9 @@ export class MessagingService {
     this.recipients = new Map();
     this.idleChecks = new Map();
     this.refreshing = null;
+    this.refreshes = new Set();
+    this.refreshGeneration = 0;
+    this.liveGeneration = 0;
     this.stopping = false;
   }
   run(action) {
@@ -24,19 +27,26 @@ export class MessagingService {
     this.serial = result.catch(() => {});
     return result;
   }
-  refresh() {
+  refresh({ persistLeader = true } = {}) {
     this.requireRunning();
-    if (this.refreshing) return this.refreshing;
+    if (!this.refreshing) {
+      const generation = ++this.refreshGeneration;
+      const collection = (async () => ({ generation, live: new Map((await this.native.list()).map(thread => [thread.id, thread])) }))();
+      this.refreshing = collection;
+      const finished = () => { if (this.refreshing === collection) this.refreshing = null; };
+      collection.then(finished, finished);
+    }
+    const collection = this.refreshing;
     const refresh = (async () => {
-      const live = new Map((await this.native.list()).map(thread => [thread.id, thread]));
+      const { live, generation } = await collection;
       await this.run(() => {
         this.requireRunning();
-        this.live = live;
-        if (this.store.leader && !live.has(this.store.leader)) this.store.record('leader', null);
+        if (generation >= this.liveGeneration) { this.live = live; this.liveGeneration = generation; }
+        if (persistLeader && this.store.leader && !this.live.has(this.store.leader)) this.store.record('leader', null);
       });
     })();
-    this.refreshing = refresh;
-    const finished = () => { if (this.refreshing === refresh) this.refreshing = null; };
+    this.refreshes.add(refresh);
+    const finished = () => this.refreshes.delete(refresh);
     refresh.then(finished, finished);
     return refresh;
   }
@@ -70,7 +80,7 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    await this.refresh();
+    await this.refresh({ persistLeader: method !== 'list_idle_notifications' });
     const result = await this.run(() => {
       this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
@@ -159,6 +169,28 @@ export class MessagingService {
           this.store.record('subscription', { id, from: caller.id, to: recipient.id, sawActive: this.live.get(recipient.id).status.type === 'active' });
           return { subscriptionId: id, to: recipient.id, event: 'next-idle', oneShot: true };
         }
+        case 'list_idle_notifications': {
+          const limit = args.limit ?? 20;
+          if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new CrossSessionError('INVALID_ARGUMENT', 'limit must be an integer from 1 to 100.');
+          const after = args.after_subscription_id === undefined ? undefined : requireText(args.after_subscription_id, 'after_subscription_id', 200);
+          const selected = [];
+          for (const sub of this.store.subscriptions.values()) {
+            if (sub.from !== caller.id || (after !== undefined && sub.id <= after)) continue;
+            let index = selected.findIndex(other => sub.id < other.id);
+            if (index < 0) index = selected.length;
+            if (selected.length === limit + 1) {
+              if (index === selected.length) continue;
+              selected.pop();
+            }
+            selected.splice(index, 0, sub);
+          }
+          const hasMore = selected.length > limit;
+          if (hasMore) selected.pop();
+          return {
+            subscriptions: selected.map(sub => ({ subscriptionId: sub.id, to: sub.to, ...(sub.messageId ? { messageId: sub.messageId } : {}), event: 'next-idle', oneShot: true })),
+            nextCursor: hasMore ? selected.at(-1).id : null
+          };
+        }
         case 'cancel_idle_notification': {
           const id = requireText(args.subscription_id, 'subscription_id', 200);
           const sub = this.store.subscriptions.get(id);
@@ -204,7 +236,7 @@ export class MessagingService {
           subscriptionId = randomUUID();
           this.store.record('subscription', { id: subscriptionId, from: message.from.id, to: message.to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
         }
-        return { messageId: message.id, status: 'accepted', delivery, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false };
+        return { messageId: message.id, status: 'accepted', delivery, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false, ...(notifyIdle ? { subscriptionId } : {}) };
       });
     } catch (error) {
       return this.run(() => {
@@ -236,9 +268,10 @@ export class MessagingService {
     do {
       await this.serial;
       await Promise.allSettled(this.refreshing ? [this.refreshing] : []);
+      await Promise.allSettled([...this.refreshes]);
       await Promise.allSettled([...this.idleChecks.values()]);
       await Promise.allSettled([...this.deliveries]);
-    } while (this.refreshing || this.idleChecks.size || this.deliveries.size);
+    } while (this.refreshing || this.refreshes.size || this.idleChecks.size || this.deliveries.size);
   }
   async hook(input, projectRoot) {
     this.requireRunning();

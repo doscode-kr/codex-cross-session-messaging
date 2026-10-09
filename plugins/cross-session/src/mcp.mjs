@@ -45,7 +45,7 @@ export function summarizeResult(name, result) {
       break;
     case 'register_session': summary = `Session ${result.id}: ${label(result.name, 120)}; ${result.role}.`; break;
     case 'send_message':
-    case 'reply': summary = `Message ${result.messageId}: ${result.status}. ${result.acknowledged === true ? 'Receipt confirmed. Task completion is not confirmed.' : 'Receipt and task completion are not confirmed.'}`; break;
+    case 'reply': summary = `Message ${result.messageId}: ${result.status}. ${result.acknowledged === true ? 'Receipt confirmed. Task completion is not confirmed.' : 'Receipt and task completion are not confirmed.'}${result.subscriptionId ? ` Idle subscription: ${label(result.subscriptionId, 200)}.` : ''}`; break;
     case 'read_messages': summary = [`${result.messages.length} messages.`, ...result.messages.map(messageSummary),
       ...(result.nextCursor ? [`Older messages: before_message_id: ${label(result.nextCursor, 200)}.`] : [])].join('\n'); break;
     case 'get_message': summary = messageSummary(result); break;
@@ -54,6 +54,9 @@ export function summarizeResult(name, result) {
     case 'release_leader':
     case 'transfer_leader': summary = `Leader: ${result.leader ?? 'none'}.`; break;
     case 'notify_when_idle': summary = `Subscription ${result.subscriptionId}: next idle for ${result.to}; one notification. Idle status does not prove task completion.`; break;
+    case 'list_idle_notifications': summary = [`${result.subscriptions.length} pending idle subscriptions.`,
+      ...result.subscriptions.map(sub => `Subscription ${label(sub.subscriptionId, 200)}: next idle for ${label(sub.to, 200)}; one notification.${sub.messageId ? ` Message: ${label(sub.messageId, 200)}.` : ''}`),
+      ...(result.nextCursor ? [`Next page: after_subscription_id: ${label(result.nextCursor, 200)}.`] : [])].join('\n'); break;
     case 'cancel_idle_notification': summary = `Subscription ${result.cancelled}: cancelled.`; break;
     default: summary = `${name}: complete.`;
   }

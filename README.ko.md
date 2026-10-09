@@ -140,6 +140,7 @@ Git worktree는 공통 Git 폴더로 프로젝트를 구분합니다.
 | `transfer_leader` | 현재 리더 역할을 넘깁니다. |
 | `release_leader` | 현재 리더 역할을 해제합니다. |
 | `notify_when_idle` | 다음 대기 상태 알림을 한 번 신청합니다. |
+| `list_idle_notifications` | 현재 세션의 남은 알림과 취소용 ID를 조회합니다. |
 | `cancel_idle_notification` | 현재 세션의 알림 신청을 취소합니다. |
 
 MCP 도구 결과는 기본으로 짧은 문장을 표시합니다.

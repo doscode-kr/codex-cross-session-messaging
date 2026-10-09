@@ -224,8 +224,32 @@ An idle notification does not prove task completion.
 The broker does not resend an uncertain notification automatically.
 
 `send_message` also accepts `notify_when_idle: true`.
-That send receipt does not return a subscription ID.
-Use a separate `notify_when_idle` call when you need an ID for cancellation.
+Its successful receipt includes the saved `subscriptionId`.
+The short MCP response also shows that ID.
+Without this option, the receipt has no `subscriptionId` field.
+
+1. Use `list_idle_notifications` in the subscribing session to find its pending subscriptions.
+2. Use a returned `subscriptionId` with `cancel_idle_notification` to cancel that subscription.
+3. Pass `nextCursor` as `after_subscription_id` to read the next page.
+
+The default `limit` is 20.
+The allowed range is 1 to 100.
+Each item contains `subscriptionId`, `to`, `event`, and `oneShot`.
+An item also contains `messageId` when a send created the subscription.
+Other sessions' subscriptions and internal state are not shown.
+IDs use character order, not creation order.
+The cursor is an exclusive ID boundary.
+A missing or canceled cursor ID is allowed.
+`nextCursor` is null when no further item is available.
+Each page uses the current pending subscriptions.
+Pages do not use a fixed snapshot.
+New IDs below a previous cursor can be missed.
+Start from the first page again to include those IDs.
+
+This query does not send messages or change subscriptions or leader records.
+The MCP client can start the broker if it is offline.
+Broker startup can recover message records.
+Use `broker-status` for a check that does not start the broker or change its files.
 
 ## 7. Use short and detailed output
 
@@ -280,7 +304,7 @@ Read [security and privacy](../SECURITY.md) before you share logs.
 1. Save the current release or commit.
 2. Get the new release in the registered source directory.
 3. Read the [change record](../CHANGELOG.md).
-4. Cancel outstanding idle subscriptions from their original sessions.
+4. Cancel outstanding idle subscriptions from their original sessions if the journal has no storage failure.
 5. Close sessions that loaded the old plugin.
 6. Stop the broker from an external shell.
 
@@ -300,6 +324,10 @@ Read [security and privacy](../SECURITY.md) before you share logs.
 11. Review the new hooks in `/hooks`.
 
 This procedure keeps message data.
+After a journal storage failure, skip cancellation because the broker cannot save it.
+The failed broker preserves subscriptions when it stops.
+It still blocks shutdown during message delivery.
+Follow the [storage recovery procedure](OPERATIONS.md) before you restart it.
 Closing sessions first prevents exit hooks from starting the broker again.
 Changing source files alone does not confirm an installed cache update.
 Use the [operations guide](OPERATIONS.md) when the source directory changes.
@@ -311,7 +339,7 @@ Default removal keeps saved message data.
 Use the same Codex home that you used for installation.
 
 1. Save the message records you need.
-2. Cancel outstanding idle subscriptions from their original sessions.
+2. Cancel outstanding idle subscriptions from their original sessions if the journal has no storage failure.
 3. Close sessions that loaded the plugin.
 4. Stop the broker from an external shell with `node plugins/cross-session/src/cli.mjs broker-stop`.
 5. Examine the removal plan with `node scripts/uninstall.mjs --dry-run`.
@@ -319,6 +347,9 @@ Use the same Codex home that you used for installation.
 7. Check the result with `codex plugin list --json`.
 
 Use `--home <full-home-path>` for a separate Codex home.
+After a journal storage failure, skip cancellation because the broker cannot save it.
+The failed broker preserves subscriptions when it stops.
+It still blocks shutdown during message delivery.
 The script removes a recognized dedicated marketplace only when no other installed plugin uses it.
 It does not remove Codex or restart its daemon.
 
@@ -344,6 +375,8 @@ The removal guide provides the manual Windows procedure.
 | `DAEMON_REQUIRED` | Open a normal CLI session with the shared daemon. |
 | `DELIVERY_FAILED` | Read the saved error and recipient state before another attempt. |
 | `DELIVERY_UNCERTAIN` | Read the outbox and confirm the recipient's situation before another send. |
+| `IDLE_SUBSCRIPTION_UNCERTAIN` | The accepted message is saved. Check subscriptions after storage recovery. Do not resend the message. |
+| `STORE_UNAVAILABLE` | Preserve the journal. Use `broker-status` and follow storage recovery in the operations guide. |
 | `MESSAGE_NOT_FOUND` | Use a message exchanged with the calling session. |
 | `SUBSCRIPTIONS_ACTIVE` | Cancel outstanding idle subscriptions before broker shutdown. |
 | `BROKER_OFFLINE` during shutdown | Check the selected message environment and any path aliases. |
@@ -376,6 +409,7 @@ The calling session identity comes from Codex metadata.
 | `get_message` | `{"message_id":"MESSAGE_ID","detail":true}` |
 | `acknowledge` | `{"message_id":"MESSAGE_ID"}` |
 | `notify_when_idle` | `{"to":"alpha"}` |
+| `list_idle_notifications` | `{"limit":20,"after_subscription_id":"SUBSCRIPTION_ID"}` |
 | `cancel_idle_notification` | `{"subscription_id":"SUBSCRIPTION_ID"}` |
 | `transfer_leader` | `{"to":"beta"}` |
 | `release_leader` | `{}` |

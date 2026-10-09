@@ -37,6 +37,16 @@ This tool records receipt. It does not send a peer event to the sender.
 Do not send both an acknowledgment and a receipt-only reply.
 Acknowledgment confirms receipt only. Report task results with evidence in a reply.
 Use `notify_when_idle`, or `send_message` with `notify_when_idle: true`, for one notification of the next idle transition.
+The successful send receipt includes the saved `subscriptionId` when this option is true.
+Use `list_idle_notifications` to find your pending subscriptions and their IDs for cancellation.
+Pass `nextCursor` as `after_subscription_id` for the next page.
+The default limit is 20; the allowed range is 1 to 100.
+IDs use character order, not creation order.
+A missing or canceled cursor ID is allowed.
+Pages use the current pending subscriptions, so start from the first page again after changes if needed.
+This query does not send a message or change subscriptions or leader records.
+The MCP client can start the broker, and startup can recover message records.
+Use `broker-status` for a check that does not start the broker or change its files.
 An idle status is a hint. It does not prove that work passed its checks.
 
 Tool results use short text by default. Full data is in `structuredContent`.
