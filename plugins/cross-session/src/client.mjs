@@ -40,7 +40,7 @@ export class BrokerClient {
     let response;
     try {
       response = await fetch(`http://127.0.0.1:${this.config.port}${path}`, {
-        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', connection: 'close' },
         body: JSON.stringify({ instance: this.config.instance, ...data }), signal: AbortSignal.timeout(this.timeoutMs)
       });
     } catch (error) {
