@@ -46,7 +46,7 @@ export class Store {
       case 'ack': Object.assign(this.messages.get(event.value.id), { acknowledgedAt: event.value.at }); break;
       case 'subscription': this.subscriptions.set(event.value.id, event.value); break;
       case 'subscription_done': this.subscriptions.delete(event.value); break;
-      default: throw new Error(`Unknown journal event: ${event.type}`);
+      default: throw new Error('The message journal contains an unknown event type.');
     }
   }
   unchanged(type, value) {
@@ -68,7 +68,7 @@ export class Store {
     }
   }
   record(type, value) {
-    if (this.failure) throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal had a write failure. Stop the broker and check storage before restarting.');
+    if (this.failure) throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal had a read or write failure. Stop the broker and check storage before restarting.');
     if (this.closed) throw new CrossSessionError('STORE_CLOSED', 'The message journal is closed.');
     if (this.unchanged(type, value)) return;
     const event = { type, value, at: new Date().toISOString() };
