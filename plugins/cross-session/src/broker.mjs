@@ -42,7 +42,11 @@ export async function startBroker({ config = settings(), native = new NativeAdap
   // Bind first. Only the successful listener may open and mutate the journal.
   await new Promise((yes, no) => { server.once('error', no); server.listen(config.port, '127.0.0.1', yes); });
   try { store = new Store(config.root); store.recover(); service = new MessagingService(store, native); }
-  catch (error) { server.close(); throw error; }
+  catch (error) {
+    try { store?.close(); } catch { /* Preserve the startup error. */ }
+    await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+    throw error;
+  }
   if (intervalMs) timer = setInterval(async () => {
     if (polling) return;
     polling = true;
