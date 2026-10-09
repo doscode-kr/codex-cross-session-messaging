@@ -134,6 +134,7 @@ Report unresolved conflicts to the leader if that role is assigned.
 | `transfer_leader` | Transfer the current leader role. |
 | `release_leader` | Release the current leader role. |
 | `notify_when_idle` | Request one notification of the next idle state. |
+| `list_idle_notifications` | List your pending notifications with IDs for cancellation. |
 | `cancel_idle_notification` | Cancel your notification request. |
 
 MCP tool results use short text by default.

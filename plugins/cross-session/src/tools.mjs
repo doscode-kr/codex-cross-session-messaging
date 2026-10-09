@@ -16,5 +16,6 @@ export const tools = [
   make('release_leader', 'Release the leader role. Only the current leader can do this.'),
   make('transfer_leader', 'Transfer the leader role to another live root session. Only the current leader can do this.', { to: text }, ['to']),
   make('notify_when_idle', 'Subscribe once to another session\'s next idle transition. The notification uses immediate delivery and does not prove task completion.', { to: text }, ['to']),
+  make('list_idle_notifications', 'List your pending idle notification subscriptions without sending a message or changing subscriptions. IDs use character order, not creation order. Pass nextCursor as after_subscription_id for the next page.', { limit: { type: 'integer', minimum: 1, maximum: 100 }, after_subscription_id: { type: 'string', description: 'Exclusive subscription ID boundary. A missing or canceled ID is allowed.' } }, [], true),
   make('cancel_idle_notification', 'Cancel an idle subscription made by this session.', { subscription_id: text }, ['subscription_id'])
 ];
