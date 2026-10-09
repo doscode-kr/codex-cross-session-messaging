@@ -122,15 +122,24 @@ export class MessagingService {
           if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new CrossSessionError('INVALID_ARGUMENT', 'limit must be an integer from 1 to 100.');
           const direction = args.direction ?? 'inbox';
           if (!['inbox', 'outbox', 'both'].includes(direction)) throw new CrossSessionError('INVALID_ARGUMENT', 'direction must be inbox, outbox, or both.');
+          let before;
+          if (args.before_message_id !== undefined) {
+            before = requireText(args.before_message_id, 'before_message_id', 200);
+            const anchor = this.store.messages.get(before);
+            if (!anchor || ![anchor.from.id, anchor.to.id].includes(caller.id)) throw new CrossSessionError('MESSAGE_NOT_FOUND', 'This history cursor is not available to this session.');
+          }
           const messages = [];
           for (const message of this.store.messages.values()) {
+            if (message.id === before) break;
             if (((direction !== 'outbox' && message.to.id === caller.id) || (direction !== 'inbox' && message.from.id === caller.id)) &&
                 (!args.unacknowledged_only || !message.acknowledgedAt)) {
               messages.push(message);
-              if (messages.length > limit) messages.shift();
+              if (messages.length > limit + 1) messages.shift();
             }
           }
-          return { messages };
+          const hasOlder = messages.length > limit;
+          if (hasOlder) messages.shift();
+          return { messages, nextCursor: hasOlder ? messages[0].id : null };
         }
         case 'acknowledge': {
           const message = this.store.messages.get(requireText(args.message_id, 'message_id', 200));

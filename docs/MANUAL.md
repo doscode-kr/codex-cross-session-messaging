@@ -384,9 +384,22 @@ Only a user-assigned leader can transfer or release the role.
 Every MCP tool accepts a boolean `detail` option.
 `read_messages` accepts `inbox`, `outbox`, or `both` for `direction`.
 Its `limit` is 1 to 100 and defaults to 20.
+The result contains `messages` and `nextCursor`.
+Messages use insertion order, from oldest to newest within each page.
+For an older page, pass `nextCursor` as `before_message_id` with the same filters.
+A null `nextCursor` means that no older matching messages remain.
+The cursor excludes its anchor message.
+Only a message sent or received by your session can be an anchor.
+The anchor stays at the same position after new messages, delivery updates, acknowledgments, or broker restart.
+If you change filters, the cursor still selects only messages before that anchor.
+Filters use current metadata; an acknowledgment can change later page results.
+The cursor does not create a snapshot of the history.
+Omit `before_message_id` to start again from the latest matching messages.
+The short text result includes the cursor when an older page is available.
 `send_message` accepts optional `reply_to` for a reply to that recipient's message.
 
 The shell CLI accepts tool names and options such as `--message-id`.
+Use `--before-message-id MESSAGE_ID` for an older history page.
 Use your exact session ID in `--session` or your existing `CODEX_THREAD_ID`.
 The CLI prints full JSON even without `--detail`.
 Its `--detail` flag takes no value and is not sent to the broker.
