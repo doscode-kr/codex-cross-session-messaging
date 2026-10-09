@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { BrokerClient } from './client.mjs';
 import { NativeAdapter } from './native.mjs';
-import { validateTool } from './mcp.mjs';
+import { callerIdentity, validateTool } from './mcp.mjs';
+import { parseCliArgs } from './cli-args.mjs';
 import { errorData } from './errors.mjs';
 import { readBrokerStatus } from './diagnostics.mjs';
 
@@ -18,21 +19,14 @@ try {
       console.log(JSON.stringify({ ok: true, transport: 'immediate-only', daemon: native.info, agents: agents.map(t => ({ id: t.id, status: t.status, cwd: t.cwd, acceptsDirectInput: t.canAcceptDirectInput })) }, null, 2));
     } finally { native.close(); }
   } else {
-    const client = new BrokerClient();
-    if (command === 'broker-stop') { console.log(JSON.stringify(await client.request('/shutdown', {}))); }
+    if (command === 'broker-stop') { console.log(JSON.stringify(await new BrokerClient().request('/shutdown', {}))); }
     else {
-      const args = {};
-      let sessionId = process.env.CODEX_THREAD_ID;
-      for (let i = 0; i < rest.length; i++) {
-        if (!rest[i].startsWith('--')) throw new Error(`Expected an option, got ${rest[i]}`);
-        const key = rest[i].slice(2).replaceAll('-', '_');
-        const value = ['notify_when_idle', 'unacknowledged_only', 'detail'].includes(key) ? true : rest[++i];
-        if (key === 'session') sessionId = value;
-        else args[key] = key === 'limit' ? Number(value) : value;
-      }
+      const { args, sessionId } = parseCliArgs(rest, process.env.CODEX_THREAD_ID);
       validateTool(command, args);
+      const caller = callerIdentity({}, { CODEX_THREAD_ID: sessionId });
       const { detail, ...brokerArgs } = args;
-      console.log(JSON.stringify(await client.call(command, brokerArgs, sessionId), null, 2));
+      const client = new BrokerClient();
+      console.log(JSON.stringify(await client.call(command, brokerArgs, caller), null, 2));
     }
   }
 } catch (error) { console.error(JSON.stringify(errorData(error), null, 2)); process.exitCode = 1; }

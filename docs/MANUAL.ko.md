@@ -421,6 +421,17 @@ Windows의 8.3 별칭이나 별칭 확인 실패는 자동 데이터 정리를 �
 이전 이력 페이지에는 `--before-message-id MESSAGE_ID`를 사용합니다.
 사용자는 `--session`에 정확한 세션 ID를 지정하거나 기존 `CODEX_THREAD_ID`를 사용합니다.
 CLI는 `--detail` 없이도 전체 JSON을 출력합니다.
-CLI의 `--detail`은 별도 값을 받지 않습니다.
+CLI는 `--detail` 뒤에 별도 값 토큰을 받지 않습니다.
 CLI는 `--detail`을 브로커로 보내지 않습니다.
+값 옵션은 `--name VALUE` 또는 `--name=VALUE` 형태를 받습니다.
+값이 `--`로 시작하면 등호 형태를 사용합니다.
+예를 들어 `--message=--notify-when-idle`은 해당 문자열을 그대로 보냅니다.
+이 예는 대기 알림을 요청하지 않습니다.
+값이 없으면 CLI는 `INVALID_ARGUMENT`를 반환합니다.
+CLI는 이때 메시지 저장 상태를 만들거나 브로커에 접속하지 않습니다.
+`--detail`과 `--notify-when-idle` 같은 boolean 옵션은 단독으로 쓰면 true입니다.
+false를 지정하려면 `--detail=false` 또는 `--notify-when-idle=false`를 사용합니다.
+같은 옵션을 여러 번 쓰면 CLI는 마지막 값을 사용합니다.
+`--session`과 비어 있지 않은 `CODEX_THREAD_ID`가 모두 없으면 도구 명령은 `IDENTITY_MISSING`을 반환합니다.
+CLI는 이때 브로커에 접속하지 않습니다.
 일반 세션 통신에는 사용자가 Codex 안의 MCP 도구를 사용합니다.
