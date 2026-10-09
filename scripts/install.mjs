@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { existsSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { dirname, delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { options, preflight, samePath, codexRunner, inventory, pluginId, marketplaceName, validateCache } from './lifecycle.mjs';
+import { options, preflight, samePath, safePath, codexRunner, inventory, pluginId, marketplaceName, validateCache } from './lifecycle.mjs';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,7 +29,15 @@ async function install() {
     return;
   }
   mkdirSync(opt.home, { recursive: true });
-  const run = codexRunner(opt.home);
+  const temporary = `${paths.receipt}.${process.pid}.tmp`;
+  const checkPaths = () => { preflight(opt.home); validateCache(paths.cache); safePath(temporary); };
+  const invoke = codexRunner(opt.home);
+  const run = async args => {
+    checkPaths();
+    const result = await invoke(args);
+    checkPaths();
+    return result;
+  };
   const before = await inventory(run, opt.home);
   if (before.marketplace && !samePath(before.marketplace.root, root)) throw new Error('The marketplace name belongs to another source. Keep that source or remove it yourself.');
   if (!opt.skipDeps) {
@@ -37,9 +45,9 @@ async function install() {
     const { stdout, stderr } = await execute(npm.command, [...npm.args, 'ci', '--prefix', plugin, '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: root, windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 });
     if (stdout.trim()) console.log(stdout.trim());
     if (stderr.trim()) console.error(stderr.trim());
+    checkPaths();
   }
   const hadPlugin = before.installed.some(p => p.pluginId === pluginId);
-  const temporary = `${paths.receipt}.${process.pid}.tmp`;
   let marketAttempted = false, pluginAttempted = false;
   try {
     marketAttempted = true;
@@ -64,7 +72,8 @@ async function install() {
         if (current.marketplace) await run(['plugin', 'marketplace', 'remove', marketplaceName, '--json']);
       } catch (rollback) { failures.push(rollback.message); }
     }
-    if (existsSync(temporary)) rmSync(temporary);
+    try { checkPaths(); if (existsSync(temporary)) rmSync(temporary); }
+    catch (cleanup) { failures.push(cleanup.message); }
     throw new Error(`Installation failed: ${error.message}${failures.length ? ` Rollback failed: ${failures.join('; ')}. Run uninstall:global after you inspect the home.` : ''}`);
   }
 }
