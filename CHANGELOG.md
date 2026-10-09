@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+- Recheck installation paths before and after Codex commands and before temporary file cleanup.
+- Use fixed JSON error messages for installation records and cached package files without showing their contents.
+
+- Reject invalid HTTP request UTF-8 before message delivery or journal changes.
+  Preserve valid Korean text, emoji, and replacement characters.
+
 - Add `list_idle_notifications` to inspect your pending subscriptions with bounded pages.
   Return the saved subscription ID when a message requests an idle notification.
 - Validate journals during removal without changing files or exposing damaged record text.

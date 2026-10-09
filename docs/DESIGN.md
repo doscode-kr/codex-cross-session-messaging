@@ -65,7 +65,10 @@ The broker serializes leader changes and message records.
 Broker state checks and journal changes use the same serial operation path.
 Waiting for a Codex delivery response does not occupy that path.
 Session list queries also run outside that path.
-Concurrent requests share one pending list query and its state update.
+Concurrent requests share one pending daemon list query.
+Each request applies its session state update through the serial operation path.
+Normal requests can save removal of a leader that is no longer loaded.
+`list_idle_notifications` omits that leader journal update.
 A later request queries the daemon again; the broker does not keep a timed status cache.
 Calls still need a successful session list query to check the caller identity.
 Submissions to the same recipient stay in order until each Codex response arrives.
@@ -90,7 +93,8 @@ Disk space, metadata memory, and replay work still grow with stored data.
 See [OPERATIONS.md](OPERATIONS.md) for storage behavior and recovery limits.
 
 Broker shutdown also uses the serial operation path.
-Outstanding idle notification subscriptions prevent shutdown with `SUBSCRIPTIONS_ACTIVE`.
+With a healthy journal, outstanding idle notification subscriptions prevent shutdown with `SUBSCRIPTIONS_ACTIVE`.
+After a recorded journal read or write failure, an explicit stop preserves those subscriptions and permits shutdown.
 Delivery responses still in progress prevent shutdown with `DELIVERIES_ACTIVE`.
 Once shutdown is accepted, the broker rejects new requests with `BROKER_STOPPING`.
 These checks protect delivery records before the broker closes its journal.
