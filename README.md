@@ -27,7 +27,8 @@ The plugin never resends an `uncertain` message automatically.
 - Independent CLI sessions on the same computer.
 
 The recorded CI baseline passed with Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
-That evidence applies to commit `c4c1b1f`, not every later change or Codex version.
+The verification record identifies the tested commits and skipped checks.
+Each result applies only to its tested commit and environment.
 Earlier Windows records also include a Codex 0.159.3 shared daemon.
 Other Codex versions are unverified by those records.
 The plugin enables the Codex `experimentalApi` capability.

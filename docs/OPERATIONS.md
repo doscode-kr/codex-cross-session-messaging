@@ -6,7 +6,7 @@
 
 This release is experimental.
 The recorded CI baseline used Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
-That result applies to commit `c4c1b1f`.
+The verification record identifies each tested commit and its results.
 Earlier Windows records also include a Codex 0.159.3 shared daemon.
 Other Codex versions are unverified by those records.
 The plugin enables `experimentalApi` when it connects to Codex.

@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+- Close client HTTP connections to avoid stale sockets after a broker restart.
+  Do not resend requests after a lost response.
+- Replay journals in chunks and read message bodies on demand.
+  Preserve message data and skip identical metadata writes.
+- Keep MCP and native RPC connections available after malformed input.
+  Clear pending request state when a send fails synchronously.
+- Close the journal and listener when broker startup recovery fails.
+- Provide a short peer message display label while retaining the full untrusted context.
 - Stop session discovery when the daemon repeats a page cursor.
   Read overlapping session IDs only once per discovery.
 - Move session and idle history queries outside serial state updates.
