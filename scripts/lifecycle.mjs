@@ -10,6 +10,17 @@ export const marketplaceName = 'cross-session-local';
 export const receiptName = '.cross-session-install.json';
 const execute = promisify(execFile);
 
+function parseLifecycleJson(text, message) {
+  try { return JSON.parse(text); }
+  catch { throw new Error(message); }
+}
+
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+export function readInstallationRecord(file) {
+  return parseLifecycleJson(readFileSync(file, 'utf8'), 'The installation record has invalid JSON. Keep the file and inspect it before you retry.');
+}
+
 export function options(argv, mode, env = process.env) {
   const result = { dryRun: false, skipDeps: false, purgeRuntime: false, help: false, home: resolve(env.CODEX_HOME || join(homedir(), '.codex')) };
   for (let i = 0; i < argv.length; i++) {
@@ -61,8 +72,8 @@ export function preflight(home) {
   const paths = lifecyclePaths(home);
   safePath(paths.receipt);
   if (existsSync(paths.receipt)) {
-    const receipt = JSON.parse(readFileSync(paths.receipt, 'utf8'));
-    if (receipt.product !== 'codex-cross-session' || receipt.pluginId !== pluginId || receipt.schema !== 1) throw new Error('The installation record is not owned by this product.');
+    const receipt = readInstallationRecord(paths.receipt);
+    if (!isObject(receipt) || receipt.product !== 'codex-cross-session' || receipt.pluginId !== pluginId || receipt.schema !== 1) throw new Error('The installation record is not owned by this product.');
   }
   safeTree(paths.cache);
   return paths;
@@ -132,7 +143,8 @@ export function validateCache(cache) {
   if (!existsSync(cache)) return;
   for (const version of readdirSync(cache)) {
     const file = join(cache, version, 'package.json');
-    if (!existsSync(file) || JSON.parse(readFileSync(file, 'utf8')).name !== 'codex-cross-session-plugin') {
+    const metadata = existsSync(file) ? parseLifecycleJson(readFileSync(file, 'utf8'), 'A cached plugin package file has invalid JSON. Keep the cache and inspect it before you retry.') : null;
+    if (!isObject(metadata) || metadata.name !== 'codex-cross-session-plugin') {
       throw new Error(`The cache contains an unrecognized plugin: ${join(cache, version)}`);
     }
   }

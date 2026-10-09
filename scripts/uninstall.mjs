@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { options, preflight, safePath, safeTree, lifecyclePaths, codexRunner, inventory, pluginId, marketplaceName, ownsMarketplace, ownsPluginSource, validateCache, assertRuntimeSpelling } from './lifecycle.mjs';
+import { options, preflight, safePath, safeTree, lifecyclePaths, codexRunner, inventory, pluginId, marketplaceName, ownsMarketplace, ownsPluginSource, validateCache, assertRuntimeSpelling, readInstallationRecord } from './lifecycle.mjs';
 import { validateRuntimeJournal } from './runtime-journal.mjs';
 
 async function runtimePlan(home, dryRun) {
@@ -59,8 +59,8 @@ async function uninstall() {
   safePath(marketCache);
   if (existsSync(marketCache) && readdirSync(marketCache).length === 0) rmdirSync(marketCache);
   if (existsSync(paths.receipt)) {
-    const receipt = JSON.parse(readFileSync(paths.receipt, 'utf8'));
-    if (receipt.product === 'codex-cross-session' && receipt.pluginId === pluginId) { safePath(paths.receipt); rmSync(paths.receipt); }
+    const receipt = readInstallationRecord(paths.receipt);
+    if (receipt?.product === 'codex-cross-session' && receipt.pluginId === pluginId) { safePath(paths.receipt); rmSync(paths.receipt); }
     else console.log('Kept an unrecognized installation record.');
   }
   const confirmedFiles = runtimeFiles.length ? await runtimePlan(opt.home, false) : [];
