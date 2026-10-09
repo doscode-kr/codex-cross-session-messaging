@@ -189,21 +189,46 @@ export class MessagingService {
     return { [pendingDelivery]: delivery };
   }
   async deliver(message, notifyIdle) {
+    let submitted = false, nativeAccepted = false, acceptedSaved = false, delivery, subscriptionId;
     try {
       await this.run(() => {
-        if (this.store.failure) throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal had a write failure. Stop the broker and check storage before restarting.');
+        if (this.store.failure) throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal had a read or write failure. Stop the broker and check storage before restarting.');
       });
-      const delivery = await this.native.deliver(message);
+      submitted = true;
+      delivery = await this.native.deliver(message);
+      nativeAccepted = true;
       return await this.run(() => {
         this.store.record('delivery', { id: message.id, status: 'accepted', delivery });
-        if (notifyIdle) this.store.record('subscription', { id: randomUUID(), from: message.from.id, to: message.to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
+        acceptedSaved = true;
+        if (notifyIdle) {
+          subscriptionId = randomUUID();
+          this.store.record('subscription', { id: subscriptionId, from: message.from.id, to: message.to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
+        }
         return { messageId: message.id, status: 'accepted', delivery, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false };
       });
     } catch (error) {
       return this.run(() => {
-        const uncertain = !['NATIVE_REJECTED', 'RECIPIENT_UNAVAILABLE', 'ACTIVE_TURN_NOT_FOUND', 'DAEMON_REQUIRED', 'CODEX_NOT_FOUND'].includes(error.code);
-        this.store.record('delivery', { id: message.id, status: uncertain ? 'uncertain' : 'failed', error: errorData(error) });
-        throw new CrossSessionError(uncertain ? 'DELIVERY_UNCERTAIN' : 'DELIVERY_FAILED', error.message, { messageId: message.id, nativeError: errorData(error), queued: false });
+        const storageCode = value => ({ code: value.code ?? 'INTERNAL_ERROR' });
+        if (acceptedSaved) throw new CrossSessionError('IDLE_SUBSCRIPTION_UNCERTAIN', 'Codex accepted the message. The broker could not confirm the idle notification subscription. Check the saved message and subscriptions after storage recovery. Do not resend the message.', {
+          messageId: message.id, status: 'accepted', delivery, subscriptionId, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false,
+          requestOutcome: 'accepted', idleNotificationOutcome: 'unknown', storageError: storageCode(this.store.failure ?? error), queued: false
+        });
+        const uncertain = submitted && (nativeAccepted || !['NATIVE_REJECTED', 'RECIPIENT_UNAVAILABLE', 'ACTIVE_TURN_NOT_FOUND', 'DAEMON_REQUIRED', 'CODEX_NOT_FOUND'].includes(error.code));
+        let storageError = this.store.failure;
+        if (!storageError && (nativeAccepted || !submitted)) storageError = error;
+        if (!storageError && this.store.closed) storageError = { code: 'STORE_CLOSED' };
+        if (submitted && !storageError) {
+          try { this.store.record('delivery', { id: message.id, status: uncertain ? 'uncertain' : 'failed', error: errorData(error) }); }
+          catch (failure) { storageError = failure; }
+        }
+        const code = !submitted ? 'STORE_UNAVAILABLE' : uncertain ? 'DELIVERY_UNCERTAIN' : 'DELIVERY_FAILED';
+        const journalError = error === this.store.failure;
+        const text = nativeAccepted ? 'Codex accepted the input, but the broker could not save the delivery result. Check message history after storage recovery. Do not resend automatically.' :
+          journalError ? 'The message journal failed during delivery. Check message history after storage recovery. Do not resend automatically.' : error.message;
+        throw new CrossSessionError(code, text, {
+          messageId: message.id, requestOutcome: !submitted ? 'not_submitted' : uncertain ? 'unknown' : 'rejected', queued: false,
+          ...(nativeAccepted ? { delivery } : journalError ? {} : { nativeError: errorData(error) }), ...(storageError ? { storageError: storageCode(storageError) } : {})
+        });
       });
     }
   }
