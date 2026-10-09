@@ -243,8 +243,15 @@ They do not shorten the saved message body.
 2. Ask your session to use `detail: true` on another tool when full JSON is needed.
 
 Codex controls the display of tool results and additional context.
+The plugin supplies the short UI label `동료 세션 알림 / Peer message` for its peer notice.
+Codex CLI 0.161.0 accepts and saves this label through `text_elements` on busy and idle delivery.
+The model still receives a notice that separates peer messages from user commands and approval.
+The full message remains in untrusted additional context.
+The label does not change permissions or task scope.
+Some hosts can display the original notice instead of the label.
 It can show full structured data or peer context even with short result text.
 The plugin cannot guarantee fewer visible messages or stop every model reply loop.
+The checked input schema has no option to hide the notice or its context from every host.
 `detail` changes result text only.
 It does not change delivery, stored data, or permissions.
 
