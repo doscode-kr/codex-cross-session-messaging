@@ -135,7 +135,7 @@ Git worktree는 공통 Git 폴더로 프로젝트를 구분합니다.
 | `reply` | 메시지 발신 세션에 답장합니다. |
 | `read_messages` | 수신 기록이나 발신 기록을 읽습니다. |
 | `get_message` | 메시지와 전달 결과를 읽습니다. |
-| `acknowledge` | 수신 세션의 읽음을 기록합니다. |
+| `acknowledge` | 수신 세션의 수신 확인을 기록합니다. |
 | `claim_leader` | 사용자 지정 후 리더 역할을 받습니다. |
 | `transfer_leader` | 현재 리더 역할을 넘깁니다. |
 | `release_leader` | 현재 리더 역할을 해제합니다. |

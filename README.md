@@ -129,7 +129,7 @@ Report unresolved conflicts to the leader if that role is assigned.
 | `reply` | Reply to a message's sender. |
 | `read_messages` | Read the inbox or outbox. |
 | `get_message` | Read a message and its delivery result. |
-| `acknowledge` | Record that the recipient read a message. |
+| `acknowledge` | Record the recipient's receipt confirmation. |
 | `claim_leader` | Claim the leader role after user assignment. |
 | `transfer_leader` | Transfer the current leader role. |
 | `release_leader` | Release the current leader role. |
