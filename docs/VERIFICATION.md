@@ -4,19 +4,21 @@
 
 ## Recorded CI baseline
 
-[GitHub Actions run 37944834746](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37944834746) passed on 2026-10-09.
-The tested commit was `e0c8584916ffdb4802dd223082569777b0eca2b7`.
+[GitHub Actions run 37946075955](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37946075955) passed on 2026-10-09.
+The tested commit was `9b0bebf83154dead6538ea59db52095059211323`.
 It includes idle subscription pages, broker diagnostics, delivery storage errors, and strict journal validation.
+It also includes strict HTTP request UTF-8 validation and installation path checks at external command boundaries.
+Installation record and cached package JSON errors omit the file contents.
 This result applies only to the stated commit.
 
 | Runner | Node.js | Passed | Skipped | Failed |
 |---|---|---:|---:|---:|
-| Windows | 20 | 204 | 1 | 0 |
-| Windows | 22 | 204 | 1 | 0 |
-| macOS | 20 | 202 | 3 | 0 |
-| macOS | 22 | 202 | 3 | 0 |
+| Windows | 20 | 223 | 1 | 0 |
+| Windows | 22 | 223 | 1 | 0 |
+| macOS | 20 | 221 | 3 | 0 |
+| macOS | 22 | 221 | 3 | 0 |
 
-Each job ran 205 tests with Codex CLI 0.161.0 and `CROSS_SESSION_REAL_CODEX_TEST=1`.
+Each job ran 224 tests with Codex CLI 0.161.0 and `CROSS_SESSION_REAL_CODEX_TEST=1`.
 Each job passed `npm run check`.
 The Windows skip concerns the broker inventory timing test after a path alias check.
 The macOS skips are Windows-only path tests.
@@ -26,6 +28,25 @@ It verifies direct peer questions, replies, leader reports, and message access b
 It does not prove that a live model completes a task.
 The dependency audit on 2026-10-09 reported zero vulnerabilities.
 That audit is not a complete security review.
+
+## Clean archive installation at the latest CI baseline
+
+An installation check used a clean archive of commit `9b0bebf83154dead6538ea59db52095059211323` in a temporary Codex home.
+The check used Windows, Node.js 20.19.4, and Codex CLI 0.161.0.
+The archive contained no installed dependencies or local development rules.
+The default `npm run install:global` command passed without `--skip-deps`.
+The 11 selected cache files matched their archive hashes.
+The `ws` dependency resolved inside the installed cache.
+The native runtime import passed.
+MCP discovery from the installed cache returned the same 13 tools as the archive.
+
+Uninstall removed the product cache and installation record.
+It preserved the other plugin, its cache hashes, settings, message journal, and token.
+Product commands exited with code 0.
+The temporary-home PATH helper warning did not stop those commands.
+No normal Codex home or running daemon was changed.
+This archive check did not test macOS or live model delivery.
+An independent reviewer checked the saved results without repeating the installation.
 
 ## Earlier CI baseline
 
