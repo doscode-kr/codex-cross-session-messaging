@@ -4,12 +4,19 @@
 
 Plugin files, marketplace registration, and message data are separate items.
 The default removal keeps message data.
+If the broker recorded a journal failure, it cannot save subscription cancellations.
+Skip the cancellation step in that case.
+An explicit broker stop preserves subscriptions and journal events after that failure.
+Pending deliveries still block shutdown.
+Keep the journal for recovery unless you explicitly choose data cleanup below.
+Correct the storage problem before you restart the broker.
+Preserved subscriptions can resume their checks after restart.
 Use the same `CODEX_HOME` that you used for installation.
 
 ## Standard removal
 
 1. Save any message records you need.
-2. Cancel idle notification subscriptions from their original sessions.
+2. If the journal is healthy, cancel idle notification subscriptions from their original sessions.
 3. Close Codex sessions that loaded the plugin.
 4. Stop the message broker from an external shell.
 
@@ -50,7 +57,7 @@ Warning: Data cleanup removes saved messages and registrations.
 The data cannot be recovered from the plugin after deletion.
 
 1. Save any message records you need.
-2. Cancel idle notification subscriptions from their original sessions.
+2. If the journal is healthy, cancel idle notification subscriptions from their original sessions.
 3. Close sessions that can start the broker.
 4. Stop the broker from an external shell with `node plugins/cross-session/src/cli.mjs broker-stop`.
 5. Examine the data cleanup plan.
@@ -90,9 +97,12 @@ Do not pass its 8.3 short path to `--home`.
 Use the manual data procedure below only after you confirm that all related brokers have stopped.
 
 The broker shutdown command is `node plugins/cross-session/src/cli.mjs broker-stop`.
-It refuses shutdown while idle notification subscriptions remain.
-Cancel your subscriptions from their original sessions before shutdown.
-If another session owns a subscription, request that session's cancellation.
+With a healthy journal, it refuses shutdown while idle notification subscriptions remain.
+Cancel your subscriptions from their original sessions in that case.
+After a recorded journal failure, an explicit stop preserves those subscriptions and permits shutdown.
+It does not cancel subscriptions or delete journal events.
+Pending deliveries still block shutdown.
+If the journal is healthy and another session owns a subscription, request that session's cancellation.
 The next plugin call can start the broker again.
 Close plugin sessions before you retry cleanup.
 
@@ -110,7 +120,7 @@ The dry run does not read that list.
 
 1. Read the installed plugin list with `codex plugin list --json`.
 2. Check whether another installed plugin uses `cross-session-local`.
-3. Cancel idle notification subscriptions from their original sessions.
+3. If the journal is healthy, cancel idle notification subscriptions from their original sessions.
 4. Close sessions that loaded the plugin.
 5. Stop the broker from an external shell with `node plugins/cross-session/src/cli.mjs broker-stop`.
 6. Run `codex plugin remove cross-session@cross-session-local`.
@@ -129,7 +139,7 @@ You can remove that checkout as a separate file operation after removal.
 Warning: Manual data removal permanently deletes saved messages and registrations.
 
 1. Save the records you need from the runtime directory.
-2. Cancel idle notification subscriptions from their original sessions.
+2. If the journal is healthy, cancel idle notification subscriptions from their original sessions.
 3. Close all related Codex sessions.
 4. Stop each broker that used the full path or a short path from an external shell.
 5. Confirm with your OS process tools that all those broker processes have exited.
