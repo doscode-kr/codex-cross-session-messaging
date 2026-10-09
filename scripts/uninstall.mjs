@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { options, preflight, safePath, safeTree, lifecyclePaths, codexRunner, inventory, pluginId, marketplaceName, ownsMarketplace, ownsPluginSource, validateCache, assertRuntimeSpelling } from './lifecycle.mjs';
+import { validateRuntimeJournal } from './runtime-journal.mjs';
 
 async function runtimePlan(home, dryRun) {
   const runtime = lifecyclePaths(home).runtime;
@@ -13,12 +14,7 @@ async function runtimePlan(home, dryRun) {
   if (!existsSync(tokenFile) || !/^[a-f0-9]{64}$/.test(readFileSync(tokenFile, 'utf8')) || !existsSync(eventFile)) {
     throw new Error('Runtime ownership cannot be confirmed. Keep the runtime files and inspect them yourself.');
   }
-  const types = new Set(['session', 'leader', 'message', 'delivery', 'ack', 'subscription', 'subscription_done']);
-  const raw = readFileSync(eventFile, 'utf8');
-  // A crash can leave an incomplete final append. Validate only complete lines.
-  for (const line of raw.slice(0, raw.lastIndexOf('\n') + 1).split('\n').filter(Boolean)) {
-    if (!types.has(JSON.parse(line).type)) throw new Error('The runtime journal contains an unrecognized event.');
-  }
+  validateRuntimeJournal(eventFile);
   await assertRuntimeSpelling(runtime);
   if (!dryRun) {
     const root = realpathSync(runtime);
