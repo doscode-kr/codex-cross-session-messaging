@@ -2,6 +2,27 @@
 
 [한국어](OPERATIONS.ko.md)
 
+## Check Codex compatibility before an update
+
+This release is experimental.
+The recorded CI baseline used Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
+That result applies to commit `c4c1b1f`.
+Earlier Windows records also include a Codex 0.159.3 shared daemon.
+Other Codex versions are unverified by those records.
+The plugin enables `experimentalApi` when it connects to Codex.
+Protocol changes can affect session lookup and direct input.
+See [the verification record](VERIFICATION.md) for evidence and limits.
+
+1. Read your CLI version with `codex --version`.
+2. Compare it with the verification record.
+3. Run `npm run doctor` to check daemon access and the session list.
+
+A successful diagnostic does not prove message delivery or task completion.
+You can use the isolated integration procedure in the verification record to check an unverified version.
+An isolated integration check uses a mock model server.
+It does not prove that a live model will understand or complete a peer request.
+The installer does not upgrade or restart the running Codex daemon.
+
 ## Update from the same source directory
 
 1. Save the release tag or commit you currently use.
@@ -129,3 +150,11 @@ The broker shutdown command is `node plugins/cross-session/src/cli.mjs broker-st
 It does not stop the Codex daemon.
 It refuses shutdown while idle notification subscriptions remain.
 Use [the removal guide](UNINSTALL.md) for removal and data cleanup.
+
+If `broker-stop` returns `DELIVERIES_ACTIVE`:
+
+1. Wait for the current message delivery results.
+2. Run `broker-stop` again.
+
+A request that returns `BROKER_STOPPING` was not accepted.
+This error does not change the result of an earlier accepted or uncertain delivery.

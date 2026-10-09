@@ -4,6 +4,17 @@
 
 ## Unreleased
 
+- Retry a discovery `thread/read` once for the specific `-32603` empty-rollout metadata error.
+  The metadata path and rollout path must match.
+  This is a read retry, not a message resend.
+- Allow delivery to another recipient while a Codex delivery response is pending.
+  Keep submissions to the same recipient in order without waiting for its turn to finish.
+- Protect pending delivery records during broker shutdown.
+- Preserve an acknowledgment saved before the Codex delivery response in the send receipt.
+  Confirm receipt only when that acknowledgment is recorded.
+  This does not confirm task completion.
+- Add peer-to-peer regression checks for direct questions, replies, and reports to a leader.
+- Clarify experimental Codex API compatibility and direct peer collaboration in both languages.
 - Find completed turns across history pages for one-time idle notifications.
 - Show recovery steps when installation records refer to a missing source checkout.
 - Preserve Korean text and emoji across HTTP request chunks.
