@@ -402,5 +402,14 @@ The shell CLI accepts tool names and options such as `--message-id`.
 Use `--before-message-id MESSAGE_ID` for an older history page.
 Use your exact session ID in `--session` or your existing `CODEX_THREAD_ID`.
 The CLI prints full JSON even without `--detail`.
-Its `--detail` flag takes no value and is not sent to the broker.
+The CLI does not accept a separate value token after `--detail`.
+It does not send `detail` to the broker.
+Value options accept `--name VALUE` or `--name=VALUE`.
+A value that starts with `--` must use the equals form.
+For example, `--message=--notify-when-idle` sends that exact text without requesting an idle notification.
+A missing value returns `INVALID_ARGUMENT` before the CLI creates message state or contacts the broker.
+Boolean options such as `--detail` and `--notify-when-idle` mean true when used alone.
+Use `--detail=false` or `--notify-when-idle=false` to set them to false.
+The CLI uses the last value if an option appears more than once.
+Without `--session` or a nonempty `CODEX_THREAD_ID`, a tool command returns `IDENTITY_MISSING` before broker access.
 Use MCP tools inside Codex for normal session communication.
