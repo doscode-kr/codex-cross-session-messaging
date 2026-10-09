@@ -15,6 +15,7 @@ test('byte proxy performs WebSocket upgrade and leaves user approval requests un
     const request = JSON.parse(String(bytes));
     received.push(request);
     if (request.method === 'initialize') {
+      for (const value of [null, [], true, 42, 'text']) ws.send(JSON.stringify(value));
       ws.send(JSON.stringify({ id: request.id, result: { userAgent: 'test' } }));
       ws.send(JSON.stringify({ id: 'approval-request', method: 'item/commandExecution/requestApproval', params: { threadId: 'b' } }));
     }

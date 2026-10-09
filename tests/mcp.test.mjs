@@ -45,6 +45,39 @@ test('MCP stdio handshake and tool discovery emit only JSON-RPC on stdout', asyn
 
 const call = (name, args = {}) => ({ method: 'tools/call', params: { name, arguments: args, _meta: { sessionId: 'a' } } });
 
+test('invalid MCP input returns errors without stopping later requests', async t => {
+  const child = spawn(process.execPath, ['plugins/cross-session/src/mcp.mjs'], { windowsHide: true });
+  t.after(() => child.kill());
+  let output = '', stderr = '';
+  child.stdout.on('data', data => { output += data; });
+  child.stderr.on('data', data => { stderr += data; });
+  const invalid = [null, [], [{ jsonrpc: '2.0', id: 1, method: 'ping' }], true, 42, 'text', {},
+    { jsonrpc: '2.0', id: 1, method: 42 }, { jsonrpc: '2.0', id: {}, method: 'ping' },
+    { jsonrpc: '2.0', id: 1, method: 'ping', params: false }, { jsonrpc: '1.0', id: 1, method: 'ping' }];
+  const exit = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill(); reject(new Error('MCP did not exit')); }, 5000);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('close', code => { clearTimeout(timer); resolve(code); });
+  });
+  child.stdin.end(['{', ...invalid.map(value => JSON.stringify(value)),
+    '{"jsonrpc":"2.0","id":1e400,"method":"ping"}',
+    JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+    JSON.stringify({ jsonrpc: '2.0', id: 'after-invalid', method: 'ping' }),
+    JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'ping', params: [] })].join('\n') + '\n');
+  assert.equal(await exit, 0, stderr);
+  const responses = output.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(responses.length, invalid.length + 4);
+  assert.deepEqual(responses[0], { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Invalid JSON' } });
+  for (const response of responses.slice(1, -2)) {
+    assert.equal(response.jsonrpc, '2.0');
+    assert.equal(response.id, null);
+    assert.equal(response.error.code, -32600);
+  }
+  assert.deepEqual(responses.slice(-2), [
+    { jsonrpc: '2.0', id: 'after-invalid', result: {} }, { jsonrpc: '2.0', id: 0, result: {} }
+  ]);
+});
+
 test('default tool text is short and full session data stays in structuredContent', async () => {
   const data = { self: 'a', leader: 'b', agents: [{ id: 'b', name: 'Peer\nwith a new line', status: 'busy', role: 'leader', sameProject: true, cwd: 'private-path', permissionMode: 'bypassPermissions', activeFlags: [] }] };
   const result = await handleMcp(call('list_agents'), { async call(name, args, id) {
