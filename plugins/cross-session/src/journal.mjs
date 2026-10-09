@@ -9,7 +9,8 @@ function parseEvent(buffer) {
   let text;
   try { text = decoder.decode(buffer); }
   catch { throw new CrossSessionError('STORE_READ_FAILED', 'The message journal contains invalid UTF-8.'); }
-  return JSON.parse(text);
+  try { return JSON.parse(text); }
+  catch { throw new SyntaxError('The message journal contains invalid JSON.'); }
 }
 
 function readFailure() {
