@@ -96,6 +96,8 @@ test('all tool summaries keep delivery, receipt, leadership, and idle states sep
   const cases = [
     ['register_session', {}, { id: 'a', name: 'Peer', role: 'worker' }, /Session a/],
     ['send_message', { to: 'b', message: 'payload' }, { messageId: 'm', status: 'accepted', acknowledged: false, taskCompleted: false }, /accepted\. Receipt and task completion are not confirmed/],
+    ['send_message', { to: 'b', message: 'payload' }, { messageId: 'm', status: 'accepted', acknowledged: true, taskCompleted: false }, /accepted\. Receipt confirmed\. Task completion is not confirmed/],
+    ['reply', { message_id: 'm', message: 'result' }, { messageId: 'reply', status: 'accepted', acknowledged: true, taskCompleted: false }, /accepted\. Receipt confirmed\. Task completion is not confirmed/],
     ['reply', { message_id: 'm', message: 'result' }, { messageId: 'reply', status: 'accepted' }, /Message reply: accepted/],
     ['read_messages', {}, { messages: [message] }, /1 messages/],
     ['read_messages', {}, { messages: [] }, /0 messages/],

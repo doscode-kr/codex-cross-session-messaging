@@ -3,13 +3,20 @@ import { resolve, normalize } from 'node:path';
 import { CrossSessionError, requireText, errorData } from './errors.mjs';
 import { displayStatus } from './native.mjs';
 
+const pendingDelivery = Symbol('pendingDelivery');
+
 function sameFolder(a, b) {
   if (!a || !b) return false;
   const canonical = p => process.platform === 'win32' ? normalize(resolve(p)).toLowerCase() : normalize(resolve(p));
   return canonical(a) === canonical(b);
 }
 export class MessagingService {
-  constructor(store, native) { this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve(); }
+  constructor(store, native) {
+    this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve();
+    this.deliveries = new Set();
+    this.recipients = new Map();
+    this.stopping = false;
+  }
   run(action) {
     const result = this.serial.then(action);
     this.serial = result.catch(() => {});
@@ -18,6 +25,17 @@ export class MessagingService {
   async refresh() {
     this.live = new Map((await this.native.list()).map(thread => [thread.id, thread]));
     if (this.store.leader && !this.live.has(this.store.leader)) this.store.record('leader', null);
+  }
+  requireRunning() {
+    if (this.stopping) throw new CrossSessionError('BROKER_STOPPING', 'The broker is stopping. No new request was accepted.');
+  }
+  async requestShutdown() {
+    return this.run(() => {
+      this.requireRunning();
+      if (this.store.subscriptions.size) throw new CrossSessionError('SUBSCRIPTIONS_ACTIVE', 'Cancel idle subscriptions before stopping the broker.');
+      if (this.deliveries.size) throw new CrossSessionError('DELIVERIES_ACTIVE', 'Wait for current message deliveries before stopping the broker.');
+      this.stopping = true;
+    });
   }
   identity(id) {
     requireText(id, 'session identity', 200);
@@ -38,8 +56,10 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    return this.run(async () => {
+    const result = await this.run(async () => {
+      this.requireRunning();
       await this.refresh();
+      this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
       const caller = this.identity(sessionId);
       switch (method) {
@@ -122,26 +142,56 @@ export class MessagingService {
         default: throw new CrossSessionError('UNKNOWN_TOOL', `Unknown tool: ${method}`);
       }
     });
+    return result?.[pendingDelivery] ?? result;
   }
-  async send(from, to, text, { replyTo, notifyIdle = false, kind = 'message' } = {}) {
+  send(from, to, text, { replyTo, notifyIdle = false, kind = 'message' } = {}) {
     if (from.id === to.id) throw new CrossSessionError('SELF_MESSAGE', 'Select another session.');
     const message = { id: randomUUID(), kind, from, to, text, createdAt: new Date().toISOString(), status: 'sending', ...(replyTo ? { replyTo } : {}) };
     this.store.record('message', message);
+    // Keep each recipient's submissions in order without blocking other peers.
+    // This only waits for a native reply, never for the recipient's turn to end.
+    const previous = this.recipients.get(to.id) ?? Promise.resolve();
+    const delivery = previous.catch(() => {}).then(() => this.deliver(message, notifyIdle));
+    this.recipients.set(to.id, delivery);
+    this.deliveries.add(delivery);
+    const finished = () => {
+      this.deliveries.delete(delivery);
+      if (this.recipients.get(to.id) === delivery) this.recipients.delete(to.id);
+    };
+    delivery.then(finished, finished);
+    return { [pendingDelivery]: delivery };
+  }
+  async deliver(message, notifyIdle) {
     try {
+      await this.run(() => {
+        if (this.store.failure) throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal had a write failure. Stop the broker and check storage before restarting.');
+      });
       const delivery = await this.native.deliver(message);
-      this.store.record('delivery', { id: message.id, status: 'accepted', delivery });
-      if (notifyIdle) this.store.record('subscription', { id: randomUUID(), from: from.id, to: to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
-      return { messageId: message.id, status: 'accepted', delivery, acknowledged: false, taskCompleted: false };
+      return await this.run(() => {
+        this.store.record('delivery', { id: message.id, status: 'accepted', delivery });
+        if (notifyIdle) this.store.record('subscription', { id: randomUUID(), from: message.from.id, to: message.to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
+        return { messageId: message.id, status: 'accepted', delivery, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false };
+      });
     } catch (error) {
-      const uncertain = !['NATIVE_REJECTED', 'RECIPIENT_UNAVAILABLE', 'ACTIVE_TURN_NOT_FOUND', 'DAEMON_REQUIRED', 'CODEX_NOT_FOUND'].includes(error.code);
-      this.store.record('delivery', { id: message.id, status: uncertain ? 'uncertain' : 'failed', error: errorData(error) });
-      throw new CrossSessionError(uncertain ? 'DELIVERY_UNCERTAIN' : 'DELIVERY_FAILED', error.message, { messageId: message.id, nativeError: errorData(error), queued: false });
+      return this.run(() => {
+        const uncertain = !['NATIVE_REJECTED', 'RECIPIENT_UNAVAILABLE', 'ACTIVE_TURN_NOT_FOUND', 'DAEMON_REQUIRED', 'CODEX_NOT_FOUND'].includes(error.code);
+        this.store.record('delivery', { id: message.id, status: uncertain ? 'uncertain' : 'failed', error: errorData(error) });
+        throw new CrossSessionError(uncertain ? 'DELIVERY_UNCERTAIN' : 'DELIVERY_FAILED', error.message, { messageId: message.id, nativeError: errorData(error), queued: false });
+      });
     }
+  }
+  async drain() {
+    do {
+      await this.serial;
+      await Promise.allSettled([...this.deliveries]);
+    } while (this.deliveries.size);
   }
   async hook(input, projectRoot) {
     return this.run(async () => {
+      this.requireRunning();
       if (input.agent_id) return {}; // Parent IDs in subagent hooks must not impersonate the root.
       await this.refresh();
+      this.requireRunning();
       const id = input.session_id;
       this.identity(id);
       this.store.record('session', { id, permissionMode: input.permission_mode ?? this.store.sessions.get(id)?.permissionMode ?? 'unknown', ...(projectRoot ? { projectRoot } : {}), updatedAt: new Date().toISOString() });
@@ -151,8 +201,11 @@ export class MessagingService {
   }
   async tick() {
     if (!this.store.subscriptions.size && !this.store.leader) return;
-    return this.run(async () => {
+    const notifications = await this.run(async () => {
+      const notifications = [];
+      if (this.stopping) return notifications;
       await this.refresh();
+      if (this.stopping) return notifications;
       for (const sub of [...this.store.subscriptions.values()]) {
         const target = this.live.get(sub.to);
         if (!target || !this.live.has(sub.from)) { this.store.record('subscription_done', sub.id); continue; }
@@ -163,10 +216,12 @@ export class MessagingService {
           if (sub.turnId && !await this.native.turnFinished(sub.to, sub.turnId)) continue;
           // Consume before delivery: one shot, even if delivery is uncertain.
           this.store.record('subscription_done', sub.id);
-          try { await this.send(this.identity(sub.to), this.identity(sub.from), `Session ${sub.to} is idle. This is a status hint, not proof of task completion. Subscription: ${sub.id}`, { kind: 'idle-notification' }); }
+          try { notifications.push(this.send(this.identity(sub.to), this.identity(sub.from), `Session ${sub.to} is idle. This is a status hint, not proof of task completion. Subscription: ${sub.id}`, { kind: 'idle-notification' })[pendingDelivery]); }
           catch { /* The saved notification records the error. Never queue a retry. */ }
         }
       }
+      return notifications;
     });
+    await Promise.allSettled(notifications);
   }
 }
