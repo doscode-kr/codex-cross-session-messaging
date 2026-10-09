@@ -13,7 +13,7 @@ It also records messages.
 You need Node.js 20 or later.
 You need Codex CLI with plugin support and a shared daemon.
 The recorded CI baseline used Codex CLI 0.161.0 on Windows and macOS with Node.js 20 and 22.
-It applies to commit `c4c1b1f`.
+The verification record identifies each tested commit and its results.
 Earlier Windows records also include a Codex 0.159.3 shared daemon.
 Those records do not verify other Codex versions.
 The plugin uses the Codex `experimentalApi` capability.

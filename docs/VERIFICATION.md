@@ -4,6 +4,30 @@
 
 ## Recorded CI baseline
 
+[GitHub Actions run 37936551603](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37936551603) passed on 2026-10-09.
+The tested commit was `b99924862b81bcf687b36ff902253b7f86e72c6e`.
+It includes journal memory changes, peer display labels, nonblocking state queries, input validation, and broker restart fixes.
+
+| Runner | Node.js | Passed | Skipped | Failed |
+|---|---|---:|---:|---:|
+| Windows | 20 | 125 | 1 | 0 |
+| Windows | 22 | 125 | 1 | 0 |
+| macOS | 20 | 123 | 3 | 0 |
+| macOS | 22 | 123 | 3 | 0 |
+
+Each job ran 126 tests with Codex CLI 0.161.0 and `CROSS_SESSION_REAL_CODEX_TEST=1`.
+Each job passed `npm run check`.
+The Windows skip concerns the broker inventory timing test after a path alias check.
+The macOS skips are Windows-only path tests.
+These skipped cases are not counted as passed.
+The real Codex test uses a local mock model and three isolated root sessions.
+It verifies direct peer questions, replies, leader reports, and message access boundaries.
+It does not prove that a live model completes a task.
+The dependency audit on 2026-10-09 reported zero vulnerabilities.
+That audit is not a complete security review.
+
+## Earlier CI baseline
+
 [GitHub Actions run 37788462031](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37788462031) passed on 2026-10-08.
 The tested commit was `c4c1b1f8e4fd6cad6c630125c5cdc07431502758`.
 
@@ -20,6 +44,56 @@ This result applies to the tested commit.
 It does not verify later changes or all Codex versions.
 A passing job can include skipped tests.
 Use the linked job logs to check skips for each environment.
+
+## Journal resource experiment
+
+An independent verifier measured the journal change on Windows with Node.js 20 on 2026-10-09.
+The fixture contained 6,000 messages with 16,000-byte bodies.
+The journal contained 96,802,884 bytes.
+
+| Measurement | Before the journal change | After the journal change |
+|---|---:|---:|
+| Heap increase during replay | 193,996,768 bytes | 11,317,736 bytes |
+| RSS increase during replay | 321,150,976 bytes | 23,691,264 bytes |
+| Replay time | 242 ms | 155 ms |
+
+The earlier process used the default heap limit.
+The changed process used `--max-old-space-size=48`.
+The verifier read all 6,000 bodies and checked their SHA-256 against the fixture.
+Interrupted messages recovered as `uncertain` without automatic delivery.
+The resource regression tests are in `tests/store-resources.test.mjs`.
+
+Each measurement used one run.
+These values are observations, not capacity or speed guarantees.
+The journal still retains its data.
+Disk use, metadata memory, and restart work increase as data accumulates.
+See [storage behavior](OPERATIONS.md) for the remaining resource limits.
+
+## Repeated operation and installation checks
+
+An independent verifier ran 300 operation cycles through the HTTP broker with three simulated sessions on 2026-10-09.
+The exercise checked 780 messages, 300 replies, 600 acknowledgments, 150 idle notifications, and 150 cancellations.
+The broker restarted 20 times on the same port.
+All message bodies and metadata matched across restarts.
+Thirty uncertain deliveries were not retried.
+All tracked deliveries, recipient waits, idle checks, and subscriptions were empty at the end.
+The exercise checked 900 rejected access attempts and 123 permission-label comparisons.
+This short exercise used `FakeNative`; it was not a real model or a long-duration availability test.
+
+A separate check used one client for 20 immediate restarts on one port.
+Before the connection fix, ten first requests failed.
+After the fix, all 20 first requests succeeded.
+The client closes each HTTP connection after its request.
+This adds connection work and does not retry a request with a lost response.
+
+The release audit also installed a clean archive of commit `d321fff` into a temporary Codex home.
+It used Windows, Node.js 20.19.4, and Codex CLI 0.161.0.
+The default dependency installation path passed without `--skip-deps`.
+The installed cache contained the runtime files and `ws` dependency.
+Cache removal, source reinstallation, and uninstall passed.
+The installed MCP file matched the source file hash after the update.
+No normal Codex home or running daemon was changed.
+The CLI reported a temporary-home PATH helper warning, but these commands exited with code 0.
 
 ## Earlier integrated Windows candidate results
 

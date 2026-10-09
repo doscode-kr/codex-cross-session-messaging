@@ -32,6 +32,8 @@ It does not override the recipient model or permissions.
 
 The peer body is `untrusted` additional context.
 The turn input contains the message ID and handling instructions.
+The input also provides a short display label for Codex clients that show text placeholders.
+The complete notice remains in the model input.
 Sender permission information is descriptive.
 It does not grant the recipient new permissions.
 
@@ -55,6 +57,9 @@ The broker binds the port before it opens the journal.
 A concurrent broker that loses the port race must not write the journal.
 The random token and directory instance identifier prevent accidental cross-instance requests.
 The broker listens only on loopback.
+Each client request closes its HTTP connection after the response.
+The client does not reuse connections that the previous broker closed.
+It adds connection work without retrying requests whose responses were lost.
 
 The broker serializes leader changes and message records.
 Broker state checks and journal changes use the same serial operation path.
@@ -72,9 +77,17 @@ Only the current leader can release or transfer the role.
 The normal default environment is shared across projects for the same Codex user settings.
 
 Each journal append is synchronized to disk.
-On startup, the store truncates an incomplete final line.
+Startup reads complete journal lines in chunks instead of loading the complete file.
+The store keeps message metadata in memory and reads bodies from their journal locations when needed.
+Message history keeps at most the requested number of matching messages before it reads their bodies.
+Identical metadata updates do not append another event.
+The store removes an incomplete final line only after it validates all preceding complete events.
+Invalid complete events stop startup without changing the journal.
 An interrupted send without a saved delivery result becomes `uncertain`.
 The journal is a record, not a future delivery queue.
+Original message data does not expire automatically.
+Disk space, metadata memory, and replay work still grow with stored data.
+See [OPERATIONS.md](OPERATIONS.md) for storage behavior and recovery limits.
 
 Broker shutdown also uses the serial operation path.
 Outstanding idle notification subscriptions prevent shutdown with `SUBSCRIPTIONS_ACTIVE`.
@@ -82,6 +95,7 @@ Delivery responses still in progress prevent shutdown with `DELIVERIES_ACTIVE`.
 Once shutdown is accepted, the broker rejects new requests with `BROKER_STOPPING`.
 These checks protect delivery records before the broker closes its journal.
 Resource closure waits for pending session queries and idle checks as well as deliveries.
+If journal recovery fails during startup, the broker closes the journal and releases the listener.
 
 ## Idle notifications
 

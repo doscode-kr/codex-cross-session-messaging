@@ -6,7 +6,7 @@
 
 이 릴리스는 실험판입니다.
 기록된 CI 검증은 Windows와 macOS의 Node.js 20과 22에서 Codex CLI 0.161.0을 사용했습니다.
-해당 결과는 commit `c4c1b1f`에 적용됩니다.
+검증 기록은 검사한 commit과 해당 결과를 명시합니다.
 이전 Windows 기록에는 Codex 0.159.3 공유 데몬도 포함됩니다.
 해당 기록은 다른 Codex 버전을 검증하지 않았습니다.
 플러그인은 Codex 연결 시 `experimentalApi`를 활성화합니다.

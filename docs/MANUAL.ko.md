@@ -13,7 +13,7 @@ Cross Session은 같은 컴퓨터의 독립 Codex CLI 세션 사이에 메시지
 사용자는 Node.js 20 이상이 필요합니다.
 사용자는 플러그인과 공유 데몬을 지원하는 Codex CLI가 필요합니다.
 기록된 CI 검증은 Windows와 macOS의 Node.js 20과 22에서 Codex CLI 0.161.0을 사용했습니다.
-해당 근거는 commit `c4c1b1f`에 적용됩니다.
+검증 기록은 검사한 commit과 해당 결과를 명시합니다.
 이전 Windows 기록에는 Codex 0.159.3 공유 데몬도 포함됩니다.
 해당 기록은 다른 Codex 버전을 검증하지 않았습니다.
 플러그인은 Codex의 `experimentalApi` 기능을 사용합니다.
