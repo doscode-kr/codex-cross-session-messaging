@@ -37,17 +37,26 @@ export class BrokerClient {
   constructor({ config = settings(), timeoutMs = 35000, autoStart = true } = {}) { this.config = config; this.timeoutMs = timeoutMs; this.autoStart = autoStart; }
   async request(path, data) {
     const token = authToken(this.config.root);
-    let response;
+    let response, body;
     try {
       response = await fetch(`http://127.0.0.1:${this.config.port}${path}`, {
         method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', connection: 'close' },
         body: JSON.stringify({ instance: this.config.instance, ...data }), signal: AbortSignal.timeout(this.timeoutMs)
       });
+      body = await response.json();
     } catch (error) {
       if (error.cause?.code === 'ECONNREFUSED') throw new CrossSessionError('BROKER_OFFLINE', 'The local messaging broker is not running.');
-      throw new CrossSessionError('BROKER_TIMEOUT', 'The broker reply was lost or timed out. Check the message history before resending.');
+      const details = { requestPath: path, requestOutcome: 'unknown', ...(response ? { httpStatus: response.status } : {}) };
+      if (error instanceof SyntaxError) throw new CrossSessionError('BROKER_RESPONSE_INVALID', 'The broker response is invalid. The request result is unknown. Check message history before another send.', details);
+      throw new CrossSessionError('BROKER_TIMEOUT', 'The broker reply was lost or timed out. The request result is unknown. Check message history before another send.', details);
     }
-    const body = await response.json();
+    const object = body !== null && typeof body === 'object' && !Array.isArray(body);
+    const text = value => typeof value === 'string' && Boolean(value.trim());
+    const invalid = !object || (response.ok
+      ? (path === '/health' && (body.instance !== this.config.instance || (body.version !== undefined && !text(body.version)) || (body.pid !== undefined && (!Number.isInteger(body.pid) || body.pid < 1)))) ||
+        (path === '/shutdown' && body.stopped !== true)
+      : (body.code !== undefined && !text(body.code)) || (body.message !== undefined && !text(body.message)));
+    if (invalid) throw new CrossSessionError('BROKER_RESPONSE_INVALID', 'The broker response is invalid. The request result is unknown. Check message history before another send.', { requestPath: path, requestOutcome: 'unknown', httpStatus: response.status });
     if (!response.ok) throw new CrossSessionError(body.code ?? 'BROKER_REJECTED', body.message ?? 'The broker rejected the request.', body);
     return body;
   }

@@ -152,6 +152,27 @@ One very large event can still require substantial memory.
 Message reads can use more disk I/O because bodies are read on demand.
 Use [the removal guide](UNINSTALL.md) for an explicit data removal procedure.
 
+## Broker response errors
+
+`BROKER_TIMEOUT` means the client did not receive a complete response.
+This includes a timeout during the response body and a detected connection failure.
+`BROKER_RESPONSE_INVALID` means the response has invalid JSON or an invalid structure.
+Neither error confirms whether the broker processed the request.
+The client does not repeat message, hook, or shutdown requests after these errors.
+The client uses one timeout for the connection and response body.
+Error details identify the request path and mark the result as unknown.
+They do not include the invalid response body or authentication token.
+
+1. Read the outbox before another message send.
+2. Check the broker status before another shutdown request.
+3. Keep the message journal if the result remains unknown.
+
+An invalid health response does not cause an automatic broker start.
+A valid broker rejection keeps its original error code and message.
+Success responses must be JSON objects.
+The health response must identify the requested message directory.
+The shutdown response must confirm `stopped: true`.
+
 ## Diagnostics
 
 | Problem | Check |
