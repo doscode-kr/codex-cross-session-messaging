@@ -4,19 +4,20 @@
 
 ## 기록된 CI 기준 결과
 
-[GitHub Actions 실행 37936551603](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37936551603)은 2026-10-09에 통과했습니다.
-검증한 commit은 `b99924862b81bcf687b36ff902253b7f86e72c6e`입니다.
-이 기준에는 기록 메모리 개선과 동료 알림 표제가 포함됩니다.
-상태 조회 병목 수정과 입력 검증과 브로커 재시작 수정도 포함됩니다.
+[GitHub Actions 실행 37944834746](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37944834746)은 2026-10-09에 통과했습니다.
+검증한 commit은 `e0c8584916ffdb4802dd223082569777b0eca2b7`입니다.
+이 기준에는 대기 알림 페이지 조회와 브로커 진단이 포함됩니다.
+전달 결과 저장 오류 처리와 엄격한 저널 검증도 포함됩니다.
+이 결과는 명시한 commit에만 적용됩니다.
 
 | 실행 환경 | Node.js | 통과 | 생략 | 실패 |
 |---|---|---:|---:|---:|
-| Windows | 20 | 125 | 1 | 0 |
-| Windows | 22 | 125 | 1 | 0 |
-| macOS | 20 | 123 | 3 | 0 |
-| macOS | 22 | 123 | 3 | 0 |
+| Windows | 20 | 204 | 1 | 0 |
+| Windows | 22 | 204 | 1 | 0 |
+| macOS | 20 | 202 | 3 | 0 |
+| macOS | 22 | 202 | 3 | 0 |
 
-각 작업은 Codex CLI 0.161.0에서 시험 126개를 실행했습니다.
+각 작업은 Codex CLI 0.161.0에서 시험 205개를 실행했습니다.
 각 작업은 `CROSS_SESSION_REAL_CODEX_TEST=1`을 지정했습니다.
 각 작업은 `npm run check`를 통과했습니다.
 Windows 생략 항목은 경로 별칭 검사 후의 브로커 목록 조회 시간 조건 시험입니다.
@@ -195,7 +196,7 @@ CLI는 임시 설정 폴더의 PATH 도우미 경고를 표시했습니다.
 
 ## 격리된 실제 Codex 통합
 
-테스트는 두 독립 세션을 가진 실제 Codex App Server를 시작합니다.
+시험은 독립 세션 3개를 가진 실제 Codex App Server를 시작합니다.
 테스트는 임시 `CODEX_HOME`을 사용합니다.
 테스트는 로컬 컴퓨터의 loopback 모형 모델 서버를 사용합니다.
 테스트는 설치된 MCP 도구의 조회를 확인합니다.

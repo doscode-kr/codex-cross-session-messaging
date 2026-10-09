@@ -4,6 +4,20 @@
 
 ## Unreleased
 
+- Add `list_idle_notifications` to inspect your pending subscriptions with bounded pages.
+  Return the saved subscription ID when a message requests an idle notification.
+- Validate journals during removal without changing files or exposing damaged record text.
+
+- Permit an explicit broker stop after journal failure while keeping pending subscriptions.
+  Keep shutdown protection for active deliveries and healthy subscriptions.
+
+- Preserve delivery IDs and known outcomes when result storage fails.
+  Report an uncertain idle subscription separately from a saved message acceptance.
+- Reject missing CLI values before broker access.
+  Support `--option=VALUE` for values that start with `--`.
+- Reject invalid journal UTF-8 without replacing characters or removing complete events.
+- Keep journal contents out of JSON and unknown-event error messages.
+
 - Add a read-only `broker-status` command with journal and pending-work metrics.
   Do not create local state or start the broker during inspection.
 - Add permission-checked cursors to read older message history pages.

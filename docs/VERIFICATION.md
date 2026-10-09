@@ -4,18 +4,19 @@
 
 ## Recorded CI baseline
 
-[GitHub Actions run 37936551603](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37936551603) passed on 2026-10-09.
-The tested commit was `b99924862b81bcf687b36ff902253b7f86e72c6e`.
-It includes journal memory changes, peer display labels, nonblocking state queries, input validation, and broker restart fixes.
+[GitHub Actions run 37944834746](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37944834746) passed on 2026-10-09.
+The tested commit was `e0c8584916ffdb4802dd223082569777b0eca2b7`.
+It includes idle subscription pages, broker diagnostics, delivery storage errors, and strict journal validation.
+This result applies only to the stated commit.
 
 | Runner | Node.js | Passed | Skipped | Failed |
 |---|---|---:|---:|---:|
-| Windows | 20 | 125 | 1 | 0 |
-| Windows | 22 | 125 | 1 | 0 |
-| macOS | 20 | 123 | 3 | 0 |
-| macOS | 22 | 123 | 3 | 0 |
+| Windows | 20 | 204 | 1 | 0 |
+| Windows | 22 | 204 | 1 | 0 |
+| macOS | 20 | 202 | 3 | 0 |
+| macOS | 22 | 202 | 3 | 0 |
 
-Each job ran 126 tests with Codex CLI 0.161.0 and `CROSS_SESSION_REAL_CODEX_TEST=1`.
+Each job ran 205 tests with Codex CLI 0.161.0 and `CROSS_SESSION_REAL_CODEX_TEST=1`.
 Each job passed `npm run check`.
 The Windows skip concerns the broker inventory timing test after a path alias check.
 The macOS skips are Windows-only path tests.
@@ -182,7 +183,7 @@ Do not report a skipped integration test as passed.
 
 ## Isolated real Codex integration
 
-The test starts a real Codex App Server with two independent sessions.
+The test starts a real Codex App Server with three independent sessions.
 It uses a temporary `CODEX_HOME` and a loopback mock model server.
 It checks installed MCP tool discovery.
 It checks that busy and idle peer bodies reach model requests.
