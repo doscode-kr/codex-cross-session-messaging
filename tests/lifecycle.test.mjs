@@ -15,7 +15,8 @@ const repository = resolve('.');
 const runScript = (script, args, env = {}) => execute(process.execPath, [join(repository, 'scripts', script), ...args], { env: { ...process.env, ...env }, windowsHide: true, timeout: 30000 });
 async function shortPath(path) {
   if (process.platform !== 'win32') return path;
-  return (await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:CROSS_SESSION_ALIAS_TEST).ShortPath'], { env: { ...process.env, CROSS_SESSION_ALIAS_TEST: path }, windowsHide: true, timeout: 10000 })).stdout.trim();
+  // Give PowerShell/COM startup more time on CI. Query failures still fail the test.
+  return (await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:CROSS_SESSION_ALIAS_TEST).ShortPath'], { env: { ...process.env, CROSS_SESSION_ALIAS_TEST: path }, windowsHide: true, timeout: 30000 })).stdout.trim();
 }
 async function hasRuntimeAlias(path) { return (await shortPath(path)).toLowerCase() !== realpathSync.native(path).toLowerCase(); }
 
