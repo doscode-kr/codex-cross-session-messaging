@@ -7,7 +7,8 @@ import { resolve } from 'node:path';
 const execute = promisify(execFile);
 async function projectRoot(cwd) {
   try {
-    const { stdout } = await execute('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, windowsHide: true, timeout: 1500 });
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
+    const { stdout } = await execute('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, env, windowsHide: true, timeout: 1500 });
     return stdout.trim(); // Shared .git directory groups Git worktrees together.
   } catch { return cwd; }
 }
