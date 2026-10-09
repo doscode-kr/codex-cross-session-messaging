@@ -41,9 +41,10 @@ export class BrokerClient {
     try {
       response = await fetch(`http://127.0.0.1:${this.config.port}${path}`, {
         method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', connection: 'close' },
-        body: JSON.stringify({ instance: this.config.instance, ...data }), signal: AbortSignal.timeout(this.timeoutMs)
+        body: JSON.stringify({ instance: this.config.instance, ...data }), signal: AbortSignal.timeout(this.timeoutMs), redirect: 'manual'
       });
-      body = await response.json();
+      if (response.status >= 300 && response.status < 400) await response.body?.cancel().catch(() => {});
+      else body = await response.json();
     } catch (error) {
       if (error.cause?.code === 'ECONNREFUSED') throw new CrossSessionError('BROKER_OFFLINE', 'The local messaging broker is not running.');
       const details = { requestPath: path, requestOutcome: 'unknown', ...(response ? { httpStatus: response.status } : {}) };
