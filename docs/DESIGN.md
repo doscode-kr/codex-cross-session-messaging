@@ -59,6 +59,10 @@ The broker listens only on loopback.
 The broker serializes leader changes and message records.
 Broker state checks and journal changes use the same serial operation path.
 Waiting for a Codex delivery response does not occupy that path.
+Session list queries also run outside that path.
+Concurrent requests share one pending list query and its state update.
+A later request queries the daemon again; the broker does not keep a timed status cache.
+Calls still need a successful session list query to check the caller identity.
 Submissions to the same recipient stay in order until each Codex response arrives.
 A slow delivery response for one recipient does not block delivery to another recipient.
 The broker waits for the delivery response, not for the recipient's turn to finish.
@@ -77,6 +81,7 @@ Outstanding idle notification subscriptions prevent shutdown with `SUBSCRIPTIONS
 Delivery responses still in progress prevent shutdown with `DELIVERIES_ACTIVE`.
 Once shutdown is accepted, the broker rejects new requests with `BROKER_STOPPING`.
 These checks protect delivery records before the broker closes its journal.
+Resource closure waits for pending session queries and idle checks as well as deliveries.
 
 ## Idle notifications
 
@@ -84,6 +89,11 @@ The broker checks subscribed sessions approximately once per second.
 It sends one notification after an observed active-to-idle transition.
 A notification attached to a send also checks the delivered turn's end state.
 That check avoids treating the previous idle state as completion of a new turn.
+Turn history queries run outside the serial state update path.
+A slow history query does not block other messages or subscription cancellation.
+Overlapping checks of one subscription share the pending query.
+Before sending, the broker checks the current session state and the same subscription again.
+Cancellation or shutdown prevents a late check from sending a notification.
 The broker consumes the subscription before notification delivery.
 It does not resend an uncertain notification automatically.
 A subscription made while the target is idle waits for a later active-to-idle transition.
