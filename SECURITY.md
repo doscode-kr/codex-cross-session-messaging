@@ -17,6 +17,11 @@ No fixed response time is promised.
 The plugin stores a journal called `events.jsonl`.
 It can contain message bodies, session IDs, display names, project paths, permission labels, timestamps, delivery errors, and idle subscriptions.
 The directory also contains an `auth-token` file.
+Optional work summaries are stored in plaintext in `work-state-v1.json` in the same directory.
+They can contain objectives, scope, completion criteria, next actions, and reported evidence.
+Work state has no automatic retention period.
+Do not save secrets in work state.
+Work-state tool results can also reach the configured model provider.
 The installer can also store `.cross-session-install.json` in the Codex home.
 That record contains the plugin identity and source directory path.
 The journal is plaintext.
@@ -50,6 +55,11 @@ The recipient keeps its own user scope and permissions.
 Sender permission labels do not grant permission to the recipient.
 Only the user can assign the leader role.
 The plugin does not answer approval requests.
+Work-state tools operate on the caller's state only.
+An active or completed declaration does not prove user approval or actual completion.
+The optional Stop check is off by default and permits at most one extra continuation.
+Its fixed prompt does not copy peer text or saved work text into a user instruction.
+See [work state and Stop limits](docs/CONTINUATION.md).
 
 ## Supported security fixes
 

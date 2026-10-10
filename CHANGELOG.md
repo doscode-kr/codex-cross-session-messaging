@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Add caller-owned work summaries with revision checks and separate storage.
+- Add an optional Stop check with one continuation, a ten-minute eligibility limit, and no automatic reactivation.
+- Keep Stop and Interrupt hooks from starting a broker or exposing raw errors.
+- Add skill guidance for remaining work, completion evidence, and user stops.
+
 - Recheck installation paths before and after Codex commands and before temporary file cleanup.
 - Use fixed JSON error messages for installation records and cached package files without showing their contents.
 

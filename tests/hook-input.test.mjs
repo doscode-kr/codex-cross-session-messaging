@@ -40,7 +40,7 @@ test('ignored and invalid hook inputs do not create a broker state directory', a
   for (const [label, input, stderrPattern] of [
     ['unsupported', JSON.stringify({ hook_event_name: 'Unknown', session_id: 'session' }), /^$/],
     ['invalid', '{', /^cross-session hook:/],
-    ['oversized', JSON.stringify({ agent_id: 'child', padding: 'x'.repeat(131072) }), /Hook input exceeds 128 KiB/]
+    ['oversized', JSON.stringify({ agent_id: 'child', padding: 'x'.repeat(131072) }), /^cross-session hook: unavailable; no stop restriction was applied\./]
   ]) {
     const state = join(root, label);
     const child = spawn(process.execPath, ['plugins/cross-session/src/hooks.mjs'], { windowsHide: true, env: { ...process.env, CROSS_SESSION_HOME: state } });
