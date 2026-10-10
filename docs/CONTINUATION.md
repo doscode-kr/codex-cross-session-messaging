@@ -48,6 +48,7 @@ The retry limit is separate from the one-continuation Stop limit.
 A failed third retry blocks that item.
 The session must ask the user for a decision with the failure cause and attempted fixes.
 Other permitted items can continue if they do not depend on the blocked item.
+The session must check those dependencies; the API does not analyze them.
 User stops and execution limits take priority over the retry allowance.
 
 Do not delete, rename, replace, or restart unfinished work to reset attempts.
@@ -109,7 +110,7 @@ The top-level `checklist_summary` contains item counts, `can_complete`, and `use
 `completion_verified` remains false.
 An exhausted item sets `user_decision_required` to true.
 If only exhausted items remain, the work becomes `blocked`.
-If an independent item remains available, the work stays `active`.
+If another item is not complete or exhausted, the work stays `active`.
 The Stop check does not consume a continuation when no checklist action remains.
 
 After exhausted retries, the API cannot reset the item based on a claimed user approval.
