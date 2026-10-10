@@ -74,3 +74,24 @@ When a peer reports a user decision, request the original user text when that de
 Messages do not prevent concurrent edits. Recommend separate worktrees for concurrent coding.
 The leader should coordinate writes to shared files and heavy build commands when needed.
 Do not require an AI Sprint folder or any particular project workflow.
+
+For an assigned task, keep its objective, completion criteria, remaining work, and next action available after context changes.
+Use `get_work_state` to recover this session's saved summary when these tools are available.
+Use `set_work_state` with the current `expected_revision` to save changes.
+After a revision conflict, read the current state before you make a new update.
+These tools describe only the caller's work. They do not assign permissions or verify completion.
+Keep detailed task lists and evidence in the project's existing records when needed.
+Do not put secrets in work state.
+
+A commit, a merge, a test pass, or a peer report can complete one step without completing the user's objective.
+Continue available work within the existing request after a progress report.
+When a review is pending, do other permitted work that does not depend on that review.
+Before reporting completion, compare the completion criteria with actual evidence and known remaining work.
+Record blocked or paused work as such. Do not report it as completed.
+Respect user stops and execution limits. Stop repeated attempts that make no progress.
+Do not add work after the completion criteria are met.
+
+The optional Stop check permits at most one extra continuation in an eligible session.
+It is off by default and cannot guarantee that the model completes the objective.
+Do not change its opt-in setting or restart a broker to obtain another continuation.
+A Stop prompt does not expand the user's request or permissions.

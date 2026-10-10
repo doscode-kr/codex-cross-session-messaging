@@ -26,6 +26,7 @@ export function validateTool(name, args) {
     if (!field || (field.type === 'integer' ? !Number.isInteger(value) : typeof value !== field.type)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid argument: ${key}`);
     if (field.minimum !== undefined && (value < field.minimum || value > field.maximum)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid range: ${key}`);
     if (field.enum && !field.enum.includes(value)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid value: ${key}`);
+    if (field.maxLength !== undefined && value.length > field.maxLength) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid length: ${key}`);
   }
   return tool;
 }
@@ -39,6 +40,8 @@ function messageSummary(message) {
 export function summarizeResult(name, result) {
   let summary;
   switch (name) {
+    case 'get_work_state':
+    case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.`; break;
     case 'list_agents':
       summary = [`${result.agents.length} sessions. Self: ${result.self}. Leader: ${result.leader ?? 'none'}.`,
         ...result.agents.map(agent => `${agent.id}: ${label(agent.name, 120)}; ${agent.status}; ${agent.role}; ${agent.sameProject ? 'same project' : 'other project'}.`)].join('\n');
