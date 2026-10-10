@@ -2,6 +2,24 @@
 
 [한국어](VERIFICATION.ko.md)
 
+## Checklist candidate checks
+
+On 2026-10-10, an independent Windows run tested candidate `1c168b5` with `CROSS_SESSION_REAL_CODEX_TEST=1`.
+The first full run had one `EADDRINUSE` failure in an existing shutdown test.
+Its temporary-directory hash selected a port already used by another local process.
+That process was not changed or stopped.
+The isolated shutdown file then passed all four tests.
+The first full retry passed 282 of 283 tests, skipped one existing Windows path-alias case, and failed none.
+The product candidate did not change between runs.
+The failed run is preserved as a failure.
+
+Eight independent checklist integration tests passed through HTTP, CLI, and MCP.
+They cover four-attempt limits, recorded evidence, revision races, restart recovery, owner isolation, and interrupt priority.
+The actual Codex Stop and Interrupt tests also passed in the full retry.
+The document check passed 13 language pairs and 166 local links.
+These results verify state transitions and host behavior, not the truth of model reports or improved team efficiency.
+No paid model trial was run for this checklist change.
+
 ## Work-state candidate checks
 
 On 2026-10-10, an independent Windows run checked core commit `993d0a7` with the real Codex opt-in enabled.
