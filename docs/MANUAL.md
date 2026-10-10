@@ -7,6 +7,7 @@ Use this manual for installation and daily use.
 You do not need a project task system.
 The broker is the local program that handles message delivery.
 It also records messages.
+For saved objectives and the optional Stop check, see [work state](CONTINUATION.md).
 
 ## 1. Prepare and install
 
