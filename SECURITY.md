@@ -57,6 +57,8 @@ Only the user can assign the leader role.
 The plugin does not answer approval requests.
 Work-state tools operate on the caller's state only.
 An active or completed declaration does not prove user approval or actual completion.
+Checklist checks validate state transitions and evidence fields, not the truth of those reports.
+An exhausted item cannot gain more attempts through a claimed approval field.
 The optional Stop check is off by default and permits at most one extra continuation.
 Its fixed prompt does not copy peer text or saved work text into a user instruction.
 See [work state and Stop limits](docs/CONTINUATION.md).

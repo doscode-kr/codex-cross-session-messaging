@@ -433,13 +433,16 @@ Windows의 8.3 별칭이나 별칭 확인 실패는 자동 데이터 정리를 �
 | `transfer_leader` | `{"to":"beta"}` |
 | `release_leader` | `{}` |
 | `get_work_state` | `{}` |
-| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"승인된 변경 완료","scope":"담당 모듈","completion_criteria":"검토와 시험 통과","next_action":"시험 실행"}` |
+| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"승인된 변경 완료","scope":"담당 모듈","completion_criteria":"검토와 시험 통과","next_action":"시험 실행","checklist":[{"title":"변경 검증","expected_result":"시험 통과","verification_method":"관련 시험 실행과 결과 기록"}]}` |
 
 쓰기 전에 `get_work_state`를 읽고 반환된 현재 리비전을 사용합니다.
 예제의 리비전 0은 기존 상태가 없을 때만 사용합니다.
 진행 저장에는 `set_work_state`에 `{"action":"update","expected_revision":1,"next_action":"독립 검토 요청","progress_evidence":"표적 시험 통과"}`를 지정합니다.
 예제의 리비전 1은 반환된 현재 리비전으로 바꿉니다.
-상태 값과 완료 근거는 [작업 상태](CONTINUATION.ko.md)를 확인하세요.
+체크리스트는 항목 ID와 시도 횟수를 유지합니다.
+실행 전에는 `attempt_start`를 사용합니다.
+검증 후에는 `attempt_result`를 사용합니다.
+도구 호출 순서, 재시도 한도, 완료 근거는 [작업 상태](CONTINUATION.ko.md)를 확인하세요.
 
 사용자가 지정한 리더만 역할을 이전하거나 해제할 수 있습니다.
 모든 MCP 도구는 boolean `detail` 옵션을 받습니다.
