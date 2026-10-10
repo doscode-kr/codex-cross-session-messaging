@@ -136,6 +136,10 @@ Report unresolved conflicts to the leader if that role is assigned.
 | `notify_when_idle` | Request one notification of the next idle state. |
 | `list_idle_notifications` | List your pending notifications with IDs for cancellation. |
 | `cancel_idle_notification` | Cancel your notification request. |
+| `get_work_state` | Read this session's work summary and revision. |
+| `set_work_state` | Save this session's work summary with a revision check. |
+
+See [work state and the optional Stop check](docs/CONTINUATION.md) for completion guidance and limits.
 
 MCP tool results use short text by default.
 The full result is available in `structuredContent`.

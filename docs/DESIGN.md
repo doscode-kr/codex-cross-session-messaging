@@ -68,7 +68,7 @@ Session list queries also run outside that path.
 Concurrent requests share one pending daemon list query.
 Each request applies its session state update through the serial operation path.
 Normal requests can save removal of a leader that is no longer loaded.
-`list_idle_notifications` omits that leader journal update.
+`list_idle_notifications`, `get_work_state`, and `set_work_state` omit that leader journal update.
 A later request queries the daemon again; the broker does not keep a timed status cache.
 Calls still need a successful session list query to check the caller identity.
 Submissions to the same recipient stay in order until each Codex response arrives.
@@ -101,6 +101,15 @@ These checks protect delivery records before the broker closes its journal.
 Resource closure waits for pending session queries and idle checks as well as deliveries.
 If journal recovery fails during startup, the broker closes the journal and releases the listener.
 
+## Work state
+
+Optional work reports use a separate, bounded `work-state-v1.json` file.
+Each update checks the caller's revision and atomically replaces that file.
+Continuation eligibility exists only in broker memory.
+Restart restores summaries without restoring eligibility.
+The Stop hook uses a fixed prompt and permits at most one extra continuation when enabled.
+See [work state and Stop limits](CONTINUATION.md) for the full contract.
+
 ## Idle notifications
 
 The broker checks subscribed sessions approximately once per second.
@@ -120,6 +129,8 @@ An idle notification is not task completion evidence.
 ## Data boundary
 
 The broker stores message bodies and session metadata locally.
+It also stores optional work summaries locally.
 Codex can send peer context to its configured model provider.
+Work-state tool results can also enter provider requests.
 Local storage does not establish that message content remains on the computer.
 See [SECURITY.md](../SECURITY.md) for privacy limits.

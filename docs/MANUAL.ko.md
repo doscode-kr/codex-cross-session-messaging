@@ -370,7 +370,7 @@ Codex는 설정된 모델 제공자에게 동료 문맥을 보낼 수 있습니�
 스크립트는 Codex를 삭제하지 않습니다.
 스크립트는 Codex 데몬을 재시작하지 않습니다.
 
-경고: `--purge-runtime`은 확인된 메시지 기록 파일을 영구 삭제합니다.
+경고: `--purge-runtime`은 확인된 메시지 기록과 선택적 `work-state-v1.json` 작업 보고를 영구 삭제합니다.
 사용자는 이 옵션을 사용하기 전에 [데이터 삭제 절차](UNINSTALL.ko.md)를 읽습니다.
 모의 실행은 경로의 안전성을 검사합니다.
 모의 실행은 브로커의 실행 여부를 검사하지 않습니다.
@@ -432,6 +432,14 @@ Windows의 8.3 별칭이나 별칭 확인 실패는 자동 데이터 정리를 �
 | `cancel_idle_notification` | `{"subscription_id":"SUBSCRIPTION_ID"}` |
 | `transfer_leader` | `{"to":"beta"}` |
 | `release_leader` | `{}` |
+| `get_work_state` | `{}` |
+| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"승인된 변경 완료","scope":"담당 모듈","completion_criteria":"검토와 시험 통과","next_action":"시험 실행"}` |
+
+쓰기 전에 `get_work_state`를 읽고 반환된 현재 리비전을 사용합니다.
+예제의 리비전 0은 기존 상태가 없을 때만 사용합니다.
+진행 저장에는 `set_work_state`에 `{"action":"update","expected_revision":1,"next_action":"독립 검토 요청","progress_evidence":"표적 시험 통과"}`를 지정합니다.
+예제의 리비전 1은 반환된 현재 리비전으로 바꿉니다.
+상태 값과 완료 근거는 [작업 상태](CONTINUATION.ko.md)를 확인하세요.
 
 사용자가 지정한 리더만 역할을 이전하거나 해제할 수 있습니다.
 모든 MCP 도구는 boolean `detail` 옵션을 받습니다.

@@ -354,7 +354,7 @@ It still blocks shutdown during message delivery.
 The script removes a recognized dedicated marketplace only when no other installed plugin uses it.
 It does not remove Codex or restart its daemon.
 
-Warning: `--purge-runtime` permanently removes confirmed saved message files.
+Warning: `--purge-runtime` permanently removes confirmed saved message files and the optional `work-state-v1.json` work reports.
 Read the [data removal procedure](UNINSTALL.md) before you use that option.
 Its dry run checks path safety but does not check whether a broker is active.
 Windows 8.3 aliases or a failed alias check prevent automatic data cleanup.
@@ -414,6 +414,14 @@ The calling session identity comes from Codex metadata.
 | `cancel_idle_notification` | `{"subscription_id":"SUBSCRIPTION_ID"}` |
 | `transfer_leader` | `{"to":"beta"}` |
 | `release_leader` | `{}` |
+| `get_work_state` | `{}` |
+| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"Finish the approved change","scope":"Assigned module","completion_criteria":"Review and tests pass","next_action":"Run tests"}` |
+
+Read `get_work_state` before a write and use its current revision.
+Revision 0 in the example applies only when no state exists.
+For progress, use `set_work_state` with `{"action":"update","expected_revision":1,"next_action":"Request independent review","progress_evidence":"Targeted tests passed"}`.
+Replace revision 1 with the current returned revision.
+See [work state](CONTINUATION.md) for allowed statuses and completion evidence.
 
 Only a user-assigned leader can transfer or release the role.
 Every MCP tool accepts a boolean `detail` option.
