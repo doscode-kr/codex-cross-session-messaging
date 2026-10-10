@@ -24,7 +24,7 @@ export function parseCliArgs(tokens, sessionId) {
       if (separator < 0) i++;
     }
     if (key === 'session') sessionId = value;
-    else args[key] = key === 'limit' ? Number(value) : value;
+    else args[key] = ['limit', 'expected_revision'].includes(key) ? Number(value) : value;
   }
   return { args, sessionId };
 }

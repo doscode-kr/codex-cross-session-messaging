@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { temporary } from './helpers.mjs';
 import { options, safeTree, preflight, ownsMarketplace, lifecyclePaths, receiptName, pluginId, marketplaceName, inventory } from '../scripts/lifecycle.mjs';
 import { resolveCodex } from '../plugins/cross-session/src/codex.mjs';
+import { WorkState, workStateFile } from '../plugins/cross-session/src/work-state.mjs';
 
 const execute = promisify(execFile);
 const repository = resolve('.');
@@ -170,6 +171,8 @@ test('install, remove, and repeated remove preserve unrelated state and runtime'
   writeFileSync(join(home, 'config.toml'), '# keep this configuration\nmodel = "my-model"\n');
   writeFileSync(join(home, 'mock-state.json'), JSON.stringify({ marketplaces: [{ name: 'other', root }], installed: [{ pluginId: 'other@other', marketplaceName: 'other' }] }));
   const data = runtime(home);
+  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks' });
+  const workBefore = readFileSync(join(data, workStateFile));
   await runScript('install.mjs', ['--home', home, '--skip-deps'], env);
   assert.equal(existsSync(join(home, receiptName)), true);
   const before = readFileSync(join(data, 'events.jsonl'), 'utf8');
@@ -183,6 +186,7 @@ test('install, remove, and repeated remove preserve unrelated state and runtime'
   assert.equal(existsSync(lifecyclePaths(home).cache), false);
   assert.equal(existsSync(join(home, receiptName)), false);
   assert.equal(readFileSync(join(data, 'events.jsonl'), 'utf8'), before);
+  assert.deepEqual(readFileSync(join(data, workStateFile)), workBefore);
   assert.equal(readFileSync(join(home, 'config.toml'), 'utf8'), '# keep this configuration\nmodel = "my-model"\n');
 });
 
@@ -190,6 +194,7 @@ test('purge removes only confirmed runtime files and retains custom runtime', as
   const root = temporary(t);
   const home = join(root, 'home');
   const data = runtime(home);
+  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks' });
   writeFileSync(join(data, 'keep.txt'), 'unrelated');
   const custom = join(root, 'custom');
   mkdirSync(custom);
@@ -199,6 +204,7 @@ test('purge removes only confirmed runtime files and retains custom runtime', as
     await assert.rejects(runScript('uninstall.mjs', ['--home', home, '--purge-runtime'], env), /8.3 path alias/);
     assert.equal(existsSync(join(data, 'events.jsonl')), true);
     assert.equal(existsSync(join(data, 'auth-token')), true);
+    assert.equal(existsSync(join(data, workStateFile)), true);
     assert.equal(readFileSync(join(data, 'keep.txt'), 'utf8'), 'unrelated');
     assert.equal(readFileSync(join(custom, 'keep.txt'), 'utf8'), 'custom');
     return;
@@ -206,10 +212,24 @@ test('purge removes only confirmed runtime files and retains custom runtime', as
   await runScript('uninstall.mjs', ['--home', home, '--purge-runtime'], env);
   assert.equal(existsSync(join(data, 'events.jsonl')), false);
   assert.equal(existsSync(join(data, 'auth-token')), false);
+  assert.equal(existsSync(join(data, workStateFile)), false);
   assert.equal(readFileSync(join(data, 'keep.txt'), 'utf8'), 'unrelated');
   assert.equal(readFileSync(join(custom, 'keep.txt'), 'utf8'), 'custom');
   await runScript('uninstall.mjs', ['--home', home, '--purge-runtime'], env);
   assert.equal(readFileSync(join(data, 'keep.txt'), 'utf8'), 'unrelated');
+});
+
+test('purge refuses an invalid optional work report before plugin changes', async t => {
+  const root = temporary(t);
+  const home = join(root, 'home');
+  const data = runtime(home);
+  const file = join(data, workStateFile);
+  writeFileSync(file, 'private invalid work report');
+  const tokenBefore = readFileSync(join(data, 'auth-token'));
+  await assert.rejects(runScript('uninstall.mjs', ['--home', home, '--purge-runtime', '--dry-run'], mockCodex(root)), error => error.stderr.includes('optional work state file is not available') && !error.stderr.includes('private invalid'));
+  assert.equal(readFileSync(file, 'utf8'), 'private invalid work report');
+  assert.deepEqual(readFileSync(join(data, 'auth-token')), tokenBefore);
+  assert.equal(existsSync(join(home, 'mock-state.json')), false);
 });
 
 test('a marketplace shared with another plugin is kept after product removal', async t => {
