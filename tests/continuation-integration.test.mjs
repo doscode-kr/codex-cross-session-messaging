@@ -7,7 +7,7 @@ import { runHook } from '../plugins/cross-session/src/hooks.mjs';
 import { temporary, FakeNative } from './helpers.mjs';
 
 const env = { CROSS_SESSION_CONTINUATION: '1' };
-const request = { action: 'start', expected_revision: 0, objective: 'Finish the requested change', scope: 'The assigned files', completion_criteria: 'Reviewed code and passing checks', next_action: 'Run the checks' };
+const request = { action: 'start', expected_revision: 0, objective: 'Finish the requested change', scope: 'The assigned files', completion_criteria: 'Reviewed code and passing checks', next_action: 'Run the checks', checklist: [{ title: 'Checks', expected_result: 'Pass', verification_method: 'Run checks' }] };
 
 test('service work reports and packaged hook policy preserve the one-continuation boundary', async t => {
   let store;
@@ -21,9 +21,12 @@ test('service work reports and packaged hook policy preserve the one-continuatio
   assert.equal((await runHook(stop, client, env)).decision, 'block');
   assert.deepEqual(await runHook({ ...stop, turn_id: 'turn-2', stop_hook_active: true }, client, env), {});
   assert.equal((await service.call('get_work_state', {}, 'session-a')).continuation.used, 1);
-  await service.call('set_work_state', { ...request, expected_revision: 1 }, 'session-a');
+  await assert.rejects(service.call('set_work_state', { ...request, expected_revision: 1 }, 'session-a'), { code: 'WORK_STATE_INCOMPLETE' });
   assert.deepEqual(await runHook({ ...stop, turn_id: 'turn-3' }, client, env), {});
-  await service.call('set_work_state', { action: 'update', expected_revision: 2, status: 'completed', completion_evidence: 'Checks passed and independent review completed' }, 'session-a');
+  const item_id = work.get('session-a').state.checklist[0].item_id;
+  await service.call('set_work_state', { action: 'attempt_start', expected_revision: 1, item_id }, 'session-a');
+  await service.call('set_work_state', { action: 'attempt_result', expected_revision: 2, item_id, attempt_number: 1, outcome: 'success', evidence: 'Checks passed' }, 'session-a');
+  await service.call('set_work_state', { action: 'update', expected_revision: 3, status: 'completed', completion_evidence: 'Checks passed and independent review completed' }, 'session-a');
   assert.deepEqual(await runHook(stop, client, env), {});
   assert.equal((await service.call('get_work_state', {}, 'session-b')).state, null);
 });

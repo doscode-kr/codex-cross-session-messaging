@@ -19,16 +19,25 @@ export function callerIdentity(meta = {}, env = process.env) {
 export function validateTool(name, args) {
   const tool = tools.find(item => item.name === name);
   if (!tool) throw new CrossSessionError('UNKNOWN_TOOL', `Unknown tool: ${name}`);
-  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new CrossSessionError('INVALID_ARGUMENT', 'Tool arguments must be an object.');
-  for (const key of tool.inputSchema.required) if (!(key in args)) throw new CrossSessionError('INVALID_ARGUMENT', `${key} is required.`);
-  for (const [key, value] of Object.entries(args)) {
-    const field = tool.inputSchema.properties[key];
-    if (!field || (field.type === 'integer' ? !Number.isInteger(value) : typeof value !== field.type)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid argument: ${key}`);
-    if (field.minimum !== undefined && (value < field.minimum || value > field.maximum)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid range: ${key}`);
-    if (field.enum && !field.enum.includes(value)) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid value: ${key}`);
-    if (field.maxLength !== undefined && value.length > field.maxLength) throw new CrossSessionError('INVALID_ARGUMENT', `Invalid length: ${key}`);
-  }
+  validateValue(tool.inputSchema, args, 'arguments');
   return tool;
+}
+function validateValue(field, value, key) {
+  const reject = () => { throw new CrossSessionError('INVALID_ARGUMENT', `Invalid argument: ${key}`); };
+  if (!field) reject();
+  if (field.type === 'integer' ? !Number.isSafeInteger(value) : field.type === 'array' ? !Array.isArray(value) : field.type === 'object' ? !value || typeof value !== 'object' || Array.isArray(value) : typeof value !== field.type) reject();
+  if (field.minimum !== undefined && value < field.minimum) reject();
+  if (field.maximum !== undefined && value > field.maximum) reject();
+  if (field.enum && !field.enum.includes(value)) reject();
+  if (field.maxLength !== undefined && value.length > field.maxLength) reject();
+  if (field.type === 'array') {
+    if (value.length < field.minItems || value.length > field.maxItems) reject();
+    for (let i = 0; i < value.length; i++) validateValue(field.items, value[i], `${key}[${i}]`);
+  }
+  if (field.type === 'object') {
+    for (const required of field.required ?? []) if (!Object.hasOwn(value, required)) reject();
+    for (const [child, childValue] of Object.entries(value)) validateValue(field.properties[child], childValue, `${key}.${child}`);
+  }
 }
 function label(value, limit = 160) {
   const text = String(value ?? 'unknown');
@@ -41,7 +50,7 @@ export function summarizeResult(name, result) {
   let summary;
   switch (name) {
     case 'get_work_state':
-    case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.`; break;
+    case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.${result.checklist_summary ? ` Checklist: ${result.checklist_summary.completed}/${result.checklist_summary.total} complete; ${result.checklist_summary.blocked} blocked. User decision required: ${result.checklist_summary.user_decision_required}.${result.checklist_summary.user_decision_required ? ' Ask the user for a decision; do not retry exhausted items.' : ''}` : ''}`; break;
     case 'list_agents':
       summary = [`${result.agents.length} sessions. Self: ${result.self}. Leader: ${result.leader ?? 'none'}.`,
         ...result.agents.map(agent => `${agent.id}: ${label(agent.name, 120)}; ${agent.status}; ${agent.role}; ${agent.sameProject ? 'same project' : 'other project'}.`)].join('\n');
