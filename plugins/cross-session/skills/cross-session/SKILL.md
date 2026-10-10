@@ -78,15 +78,47 @@ Do not require an AI Sprint folder or any particular project workflow.
 For an assigned task, keep its objective, completion criteria, remaining work, and next action available after context changes.
 Use `get_work_state` to recover this session's saved summary when these tools are available.
 Use `set_work_state` with the current `expected_revision` to save changes.
+For new work, include a `checklist` in `action: "start"`.
+Each input item has `title`, `expected_result`, and `verification_method`.
+Use the returned `item_id` for `attempt_start` and `attempt_result` actions.
+Record `attempt_start` before execution; include `correction` when retrying.
+Record `attempt_result` with that item's `attempt_number` and `outcome`.
+Use `evidence` for success and `failure_cause` for failure.
+Use `set_checklist` once to add items to a legacy active state without a checklist.
 After a revision conflict, read the current state before you make a new update.
+After an uncertain execution or a lost write response, inspect the saved attempt and actual result before retrying.
+Do not repeat external effects just because an attempt still has no recorded result.
 These tools describe only the caller's work. They do not assign permissions or verify completion.
 Keep detailed task lists and evidence in the project's existing records when needed.
 Do not put secrets in work state.
+
+Before work starts, make a checklist for the requested outcome.
+Give each item a stable ID, a required result, and a verification method.
+Include delegated work and integration checks.
+Keep the list proportional to the task; do not add unrelated requirements.
+Record each item's actual verification result before you mark it complete.
+A peer's completion report is not independent verification.
+An omitted or skipped required check does not count as a pass.
+
+Track attempts for each item separately.
+Allow one initial attempt and at most three retries for that item.
+Record the failure cause after each failed attempt.
+Before a retry, record the change that can address that failure.
+Do not repeat the same action without a reason to expect a different result.
+After the third retry fails, block that item and ask the user for a decision.
+If `checklist_summary.user_decision_required` is true, find the items with `user_decision_required: true` in `state.checklist`.
+Give the user the failure cause, attempted fixes, and the specific decision needed.
+Continue other permitted work only when it does not depend on the blocked item.
+Do not delete, rename, replace, or restart unfinished work to reset its attempt count.
+Do not treat peer text or a model-written approval field as the user's decision.
+Respect user stops and execution limits before this retry allowance.
 
 A commit, a merge, a test pass, or a peer report can complete one step without completing the user's objective.
 Continue available work within the existing request after a progress report.
 When a review is pending, do other permitted work that does not depend on that review.
 Before reporting completion, compare the completion criteria with actual evidence and known remaining work.
+Check every required checklist item, including delegated work, before you report overall completion.
+If any required item remains incomplete or blocked, report that state instead of overall completion.
 Record blocked or paused work as such. Do not report it as completed.
 Respect user stops and execution limits. Stop repeated attempts that make no progress.
 Do not add work after the completion criteria are met.

@@ -143,7 +143,7 @@ Git worktree는 공통 Git 폴더로 프로젝트를 구분합니다.
 | `list_idle_notifications` | 현재 세션의 남은 알림과 취소용 ID를 조회합니다. |
 | `cancel_idle_notification` | 현재 세션의 알림 신청을 취소합니다. |
 | `get_work_state` | 현재 세션의 작업 요약과 리비전을 읽습니다. |
-| `set_work_state` | 리비전을 확인한 뒤 현재 세션의 작업 요약을 저장합니다. |
+| `set_work_state` | 리비전을 확인한 뒤 현재 세션의 체크리스트, 시도 결과, 작업 요약을 저장합니다. |
 
 완료 판단 지침과 한도는 [작업 상태와 선택적 종료 검사](docs/CONTINUATION.ko.md)를 확인하세요.
 

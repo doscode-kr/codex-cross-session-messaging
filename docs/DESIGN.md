@@ -105,6 +105,13 @@ If journal recovery fails during startup, the broker closes the journal and rele
 
 Optional work reports use a separate, bounded `work-state-v1.json` file.
 Each update checks the caller's revision and atomically replaces that file.
+New work requires fixed checklist items with server-generated IDs.
+An attempt start saves its number before execution.
+Each item permits one initial attempt and three retries.
+The current running attempt accepts one result.
+Unfinished items prevent replacement of the work and overall completion.
+Version 1 files remain readable; successful writes use schema version 2 in the same file.
+The API validates reported evidence fields, not their truth.
 Continuation eligibility exists only in broker memory.
 Restart restores summaries without restoring eligibility.
 The Stop hook uses a fixed prompt and permits at most one extra continuation when enabled.

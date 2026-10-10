@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- Add fixed work checklist items with verification methods and completion evidence.
+- Limit each item to one initial attempt and three retries.
+- Block exhausted items and reject overall completion while required items remain incomplete.
+
 - Add caller-owned work summaries with revision checks and separate storage.
 - Add an optional Stop check with one continuation, a ten-minute eligibility limit, and no automatic reactivation.
 - Keep Stop and Interrupt hooks from starting a broker or exposing raw errors.

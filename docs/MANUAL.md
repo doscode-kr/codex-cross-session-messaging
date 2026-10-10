@@ -415,13 +415,15 @@ The calling session identity comes from Codex metadata.
 | `transfer_leader` | `{"to":"beta"}` |
 | `release_leader` | `{}` |
 | `get_work_state` | `{}` |
-| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"Finish the approved change","scope":"Assigned module","completion_criteria":"Review and tests pass","next_action":"Run tests"}` |
+| `set_work_state` | `{"action":"start","expected_revision":0,"objective":"Finish the approved change","scope":"Assigned module","completion_criteria":"Review and tests pass","next_action":"Run tests","checklist":[{"title":"Verify change","expected_result":"Tests pass","verification_method":"Run relevant tests and record results"}]}` |
 
 Read `get_work_state` before a write and use its current revision.
 Revision 0 in the example applies only when no state exists.
 For progress, use `set_work_state` with `{"action":"update","expected_revision":1,"next_action":"Request independent review","progress_evidence":"Targeted tests passed"}`.
 Replace revision 1 with the current returned revision.
-See [work state](CONTINUATION.md) for allowed statuses and completion evidence.
+The checklist keeps item IDs and attempt counts.
+Use `attempt_start` before execution and `attempt_result` after verification.
+See [work state](CONTINUATION.md) for the tool sequence, retry limits, and completion evidence.
 
 Only a user-assigned leader can transfer or release the role.
 Every MCP tool accepts a boolean `detail` option.

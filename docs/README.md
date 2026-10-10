@@ -8,7 +8,7 @@ It covers installation, two sessions, messages, leader roles, notifications, upd
 | Document | Content |
 |---|---|
 | [User manual](MANUAL.md) | Complete user procedures and tool examples. |
-| [Work state and Stop check](CONTINUATION.md) | Saved objectives, revision checks, and an optional single continuation. |
+| [Work state and Stop check](CONTINUATION.md) | Checklists, attempt limits, evidence, and an optional single continuation. |
 | [Coordination smoke evaluation](COORDINATION_EVALUATION.md) | Bounded plan checks and real Codex host protocol tests. |
 | [Update and diagnostics](OPERATIONS.md) | Update the source and installed cache. Resolve operational errors. |
 | [Removal guide](UNINSTALL.md) | Remove the plugin. Keep or remove message data safely. |
