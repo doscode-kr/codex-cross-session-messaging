@@ -10,7 +10,13 @@ import { parseCliArgs } from '../plugins/cross-session/src/cli-args.mjs';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 
-const start = (expected_revision = 0) => ({ action: 'start', expected_revision, objective: 'Finish the approved change', scope: 'Only the approved module', completion_criteria: 'Independent review and passing tests', next_action: 'Run the targeted tests' });
+const start = (expected_revision = 0) => ({ action: 'start', expected_revision, objective: 'Finish the approved change', scope: 'Only the approved module', completion_criteria: 'Independent review and passing tests', next_action: 'Run the targeted tests', checklist: [{ title: 'Targeted checks', expected_result: 'Tests pass', verification_method: 'Run the targeted tests' }] });
+function completeItem(work, owner) {
+  const report = work.get(owner);
+  const item_id = report.state.checklist[0].item_id;
+  const running = work.set(owner, { action: 'attempt_start', expected_revision: report.revision, item_id });
+  return work.set(owner, { action: 'attempt_result', expected_revision: running.revision, item_id, attempt_number: 1, outcome: 'success', evidence: 'Test output and independent review record' });
+}
 const stop = (turn_id = 'turn-1', stop_hook_active = false) => ({ hook_event_name: 'Stop', turn_id, stop_hook_active, continuation_enabled: true });
 function enabled(t, options = {}) { return new WorkState(temporary(t), { enabled: true, ...options }); }
 
@@ -22,9 +28,10 @@ test('work reports are owner-only, bounded, revision checked, and not verified c
   const before = readFileSync(work.path, 'utf8');
   assert.throws(() => work.set('a', { action: 'update', expected_revision: 0, next_action: 'bad' }), { code: 'WORK_STATE_CONFLICT' });
   assert.throws(() => work.set('a', { action: 'update', expected_revision: 1, scope: 'expanded' }), { code: 'INVALID_ARGUMENT' });
-  assert.throws(() => work.set('a', { action: 'update', expected_revision: 1, status: 'completed' }), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => work.set('a', { action: 'update', expected_revision: 1, status: 'completed' }), { code: 'WORK_STATE_INCOMPLETE' });
   assert.equal(readFileSync(work.path, 'utf8'), before);
-  const completed = work.set('a', { action: 'update', expected_revision: 1, status: 'completed', completion_evidence: 'Test command and independent review record' });
+  completeItem(work, 'a');
+  const completed = work.set('a', { action: 'update', expected_revision: 3, status: 'completed', completion_evidence: 'Test command and independent review record' });
   assert.equal(completed.completion_verified, false);
   assert.equal(completed.continuation.revoked, true);
   assert.equal(work.hook('a', stop()).reasonCode, 'REVOKED');
@@ -55,7 +62,7 @@ test('one continuation cannot be reset by duplicate Stop, updates, or a new task
   assert.equal(work.get('a').continuation.used, 1);
   work.set('a', { action: 'update', expected_revision: 1, progress_evidence: 'new report', next_action: 'Do the next check' });
   assert.equal(work.hook('a', stop('turn-2')).reasonCode, 'CONTINUATION_LIMIT');
-  work.set('a', start(2));
+  assert.throws(() => work.set('a', start(2)), { code: 'WORK_STATE_INCOMPLETE' });
   assert.equal(work.hook('a', stop('turn-3')).reasonCode, 'CONTINUATION_LIMIT');
   assert.equal(work.get('a').continuation.used, 1);
 });
@@ -66,8 +73,8 @@ for (const event of ['Interrupt', 'UserPromptSubmit', 'SessionStart', 'SessionEn
   work.hook('a', stop());
   work.hook('a', { hook_event_name: event });
   assert.equal(work.hook('a', stop()).reasonCode, 'REVOKED');
-  work.set('a', start(1));
-  work.set('a', { action: 'update', expected_revision: 2, status: 'active' });
+  assert.throws(() => work.set('a', start(1)), { code: 'WORK_STATE_INCOMPLETE' });
+  work.set('a', { action: 'update', expected_revision: 1, status: 'active' });
   assert.equal(work.hook('a', stop('turn-2')).reasonCode, 'REVOKED');
   assert.equal(work.get('a').continuation.revoke_reason, event);
 });
@@ -82,7 +89,7 @@ test('initial prompt does not block first activation; restart restores only a re
   assert.equal(restored.get('a').state.objective, start().objective);
   assert.equal(restored.get('a').continuation.revoke_reason, 'restart');
   assert.equal(restored.hook('a', stop()).reasonCode, 'REVOKED');
-  restored.set('a', start(1));
+  assert.throws(() => restored.set('a', start(1)), { code: 'WORK_STATE_INCOMPLETE' });
   assert.equal(restored.hook('a', stop()).reasonCode, 'REVOKED');
 });
 
@@ -99,7 +106,7 @@ test('file loading preserves an Interrupt latch made before restore', t => {
   const restored = new WorkState(root, { enabled: true });
   restored.revoke('a', 'Interrupt');
   assert.equal(restored.get('a').continuation.revoke_reason, 'Interrupt');
-  restored.set('a', start(1));
+  assert.throws(() => restored.set('a', start(1)), { code: 'WORK_STATE_INCOMPLETE' });
   assert.equal(restored.hook('a', stop()).reasonCode, 'REVOKED');
 });
 
@@ -108,7 +115,8 @@ test('ten-minute activation deadline cannot be moved by updates or start', t => 
   const work = enabled(t, { now: () => now });
   work.set('a', start());
   now += 599999;
-  work.set('a', start(1));
+  assert.throws(() => work.set('a', start(1)), { code: 'WORK_STATE_INCOMPLETE' });
+  work.set('a', { action: 'update', expected_revision: 1, progress_evidence: 'Progress does not move the deadline' });
   now++;
   assert.equal(work.hook('a', stop()).reasonCode, 'REVOKED');
   assert.equal(work.get('a').continuation.revoke_reason, 'expired');
