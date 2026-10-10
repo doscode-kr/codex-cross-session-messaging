@@ -66,7 +66,7 @@ The [Stop test](../tests/real-codex-stop.test.mjs) connects the product `runHook
 
 The [Interrupt test](../tests/real-codex-interrupt.test.mjs) holds a Stop hook at a barrier. It sends `turn/interrupt` before it releases the hook. The host must report an interrupted turn. A late block response must not start another mock request. The baseline must continue once.
 
-These tests start their own Codex processes. They use mock model responses and copy no authentication. The Interrupt test trusts only the exact fixture hashes in its temporary Codex home. It does not change your existing hook trust. On Windows, the tests retain `USERPROFILE` for PowerShell discovery. They still use a temporary `CODEX_HOME`. Both tests are skipped by default.
+These tests start their own Codex processes. They use mock model responses and copy no authentication. The Stop test uses `--dangerously-bypass-hook-trust` only for its isolated CLI invocation. The Interrupt test trusts only the exact fixture hashes in its temporary Codex home. It does not change your existing hook trust. On Windows, the tests retain `USERPROFILE` for PowerShell discovery. They still use a temporary `CODEX_HOME`. Both tests are skipped by default.
 
 1. Set the test flag for the test process.
 2. Run the two host tests.

@@ -125,6 +125,7 @@ null 지표는 성공을 뜻하지 않습니다.
 이 시험들은 자체 Codex 프로세스를 시작합니다.
 이 시험들은 모형 모델 응답을 사용합니다.
 인증은 복사하지 않습니다.
+Stop 시험은 격리된 CLI 실행에만 `--dangerously-bypass-hook-trust`를 사용합니다.
 Interrupt 시험은 임시 Codex 홈에서 정확한 시험 hook 해시만 신뢰합니다.
 기존 hook 신뢰 설정은 바꾸지 않습니다.
 Windows에서는 PowerShell 탐색을 위해 `USERPROFILE`을 유지합니다.

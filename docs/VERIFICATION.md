@@ -37,6 +37,7 @@ The CLI check bypassed hook trust for that invocation in a temporary fixture hom
 The app-server check registered only the three reviewed fixture keys and hashes in its temporary home.
 Operating daemon settings were not changed.
 These results establish host protocol behavior for the tested version, not model task quality.
+Use the [evaluation guide](COORDINATION_EVALUATION.md) to repeat the public checks and interpret their limits.
 
 ## Recorded CI baseline
 
