@@ -21,6 +21,7 @@ A completed status requires completion evidence and a successful recorded result
 This evidence is a model report, not independent verification.
 Updates cannot change the original objective, scope, or criteria.
 A new `start` cannot replace a checklist with incomplete items, even if the work is canceled.
+The current work must have status `completed` before a new `start` can replace it.
 A new `start` never resets the continuation limit.
 The tools have no target session parameter.
 A leader cannot update a peer's state through these tools.
