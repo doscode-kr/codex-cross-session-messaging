@@ -24,7 +24,10 @@ export function parseCliArgs(tokens, sessionId) {
       if (separator < 0) i++;
     }
     if (key === 'session') sessionId = value;
-    else args[key] = ['limit', 'expected_revision'].includes(key) ? Number(value) : value;
+    else if (key === 'checklist') {
+      try { args[key] = JSON.parse(value); } catch { throw new CrossSessionError('INVALID_ARGUMENT', 'The checklist option requires a JSON array.'); }
+      if (!Array.isArray(args[key])) throw new CrossSessionError('INVALID_ARGUMENT', 'The checklist option requires a JSON array.');
+    } else args[key] = ['limit', 'expected_revision', 'attempt_number'].includes(key) ? Number(value) : value;
   }
   return { args, sessionId };
 }

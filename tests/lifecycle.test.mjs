@@ -171,7 +171,7 @@ test('install, remove, and repeated remove preserve unrelated state and runtime'
   writeFileSync(join(home, 'config.toml'), '# keep this configuration\nmodel = "my-model"\n');
   writeFileSync(join(home, 'mock-state.json'), JSON.stringify({ marketplaces: [{ name: 'other', root }], installed: [{ pluginId: 'other@other', marketplaceName: 'other' }] }));
   const data = runtime(home);
-  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks' });
+  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks', checklist: [{ title: 'Checks', expected_result: 'Pass', verification_method: 'Run checks' }] });
   const workBefore = readFileSync(join(data, workStateFile));
   await runScript('install.mjs', ['--home', home, '--skip-deps'], env);
   assert.equal(existsSync(join(home, receiptName)), true);
@@ -194,7 +194,7 @@ test('purge removes only confirmed runtime files and retains custom runtime', as
   const root = temporary(t);
   const home = join(root, 'home');
   const data = runtime(home);
-  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks' });
+  new WorkState(data).set('owner', { action: 'start', expected_revision: 0, objective: 'Approved objective', scope: 'Approved scope', completion_criteria: 'Passing checks', next_action: 'Run checks', checklist: [{ title: 'Checks', expected_result: 'Pass', verification_method: 'Run checks' }] });
   writeFileSync(join(data, 'keep.txt'), 'unrelated');
   const custom = join(root, 'custom');
   mkdirSync(custom);

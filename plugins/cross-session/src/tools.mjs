@@ -6,11 +6,17 @@ const make = (name, description, properties = {}, required = [], readOnly = fals
 });
 export const tools = [
   make('get_work_state', 'Read your bounded work report. Completion is a model report, not verified evidence. Runtime continuation is disabled by default and is not restored after a broker restart.', {}, [], true),
-  make('set_work_state', 'Save your work report with a revision check. Start requires objective, scope, completion_criteria, and next_action. Update cannot change scope. Completed requires completion_evidence. This tool cannot restore continuation after an input or interrupt.', {
-    action: { type: 'string', enum: ['start', 'update'] }, expected_revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+  make('set_work_state', 'Save your work report with a revision check. Start requires a checklist. Record each attempt before work. Each item permits one initial attempt and three retries. Retries require correction. Completion requires item evidence and completion_evidence. This tool cannot restore continuation after an input or interrupt.', {
+    action: { type: 'string', enum: ['start', 'update', 'set_checklist', 'attempt_start', 'attempt_result'] }, expected_revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     objective: { ...text, maxLength: 500 }, scope: { ...text, maxLength: 1000 }, completion_criteria: { ...text, maxLength: 1000 },
     next_action: { ...text, maxLength: 1000 }, progress_evidence: { ...text, maxLength: 1000 }, completion_evidence: { ...text, maxLength: 1000 },
-    status: { type: 'string', enum: ['active', 'paused', 'completed', 'blocked', 'canceled'] }
+    status: { type: 'string', enum: ['active', 'paused', 'completed', 'blocked', 'canceled'] },
+    checklist: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: {
+      title: { ...text, maxLength: 200 }, expected_result: { ...text, maxLength: 500 }, verification_method: { ...text, maxLength: 500 }
+    }, required: ['title', 'expected_result', 'verification_method'], additionalProperties: false } },
+    item_id: { ...text, maxLength: 36 }, attempt_number: { type: 'integer', minimum: 1, maximum: 4 },
+    correction: { ...text, maxLength: 1000 }, outcome: { type: 'string', enum: ['success', 'failure'] },
+    evidence: { ...text, maxLength: 1000 }, failure_cause: { ...text, maxLength: 1000 }
   }, ['action', 'expected_revision']),
   make('list_agents', 'List loaded independent sessions on this computer. Same-project sessions appear first; other projects are allowed. Status is a hint, not task-completion evidence.', {}, [], true),
   make('register_session', 'Set a unique display name for the calling session. Caller identity comes from Codex metadata, not arguments.', { name: text }),

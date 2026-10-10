@@ -12,7 +12,7 @@ import { handleMcp } from '../plugins/cross-session/src/mcp.mjs';
 
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL('../plugins/cross-session/src/cli.mjs', import.meta.url));
-const begin = { action: 'start', expected_revision: 0, objective: 'Finish the approved task', scope: 'Only the approved files', completion_criteria: 'Review and tests', next_action: 'Run the test command' };
+const begin = { action: 'start', expected_revision: 0, objective: 'Finish the approved task', scope: 'Only the approved files', completion_criteria: 'Review and tests', next_action: 'Run the test command', checklist: [{ title: 'Checks', expected_result: 'Tests pass', verification_method: 'Run tests' }] };
 
 test('actual CLI, MCP, authenticated hooks, and restart share an owner report without native resume', async t => {
   let broker;
@@ -23,7 +23,7 @@ test('actual CLI, MCP, authenticated hooks, and restart share an owner report wi
   broker.service.workState = new WorkState(root, { enabled: true });
   const client = new BrokerClient({ config, autoStart: false });
   const env = { ...process.env, CROSS_SESSION_HOME: root, CODEX_HOME: join(root, 'isolated-home'), CODEX_THREAD_ID: 'session-a' };
-  const options = Object.entries(begin).flatMap(([key, value]) => [`--${key.replaceAll('_', '-')}`, String(value)]);
+  const options = Object.entries(begin).flatMap(([key, value]) => [`--${key.replaceAll('_', '-')}`, Array.isArray(value) ? JSON.stringify(value) : String(value)]);
   const saved = JSON.parse((await execute(process.execPath, [cli, 'set_work_state', ...options], { env, windowsHide: true, timeout: 10000 })).stdout);
   assert.equal(saved.revision, 1);
   const other = await client.call('get_work_state', {}, 'session-b');
@@ -41,7 +41,10 @@ test('actual CLI, MCP, authenticated hooks, and restart share an owner report wi
   broker.service.workState = new WorkState(root, { enabled: true });
   assert.equal((await client.call('get_work_state', {}, 'session-a')).state.objective, begin.objective);
   assert.equal((await client.hook(input)).stopPolicy.reasonCode, 'REVOKED');
-  const completed = await handleMcp({ method: 'tools/call', params: { name: 'set_work_state', arguments: { action: 'update', expected_revision: 1, status: 'completed', completion_evidence: 'Saved independent review and test output' }, _meta: { sessionId: 'session-a' } } }, client);
+  const item_id = saved.state.checklist[0].item_id;
+  await client.call('set_work_state', { action: 'attempt_start', expected_revision: 1, item_id }, 'session-a');
+  await client.call('set_work_state', { action: 'attempt_result', expected_revision: 2, item_id, attempt_number: 1, outcome: 'success', evidence: 'Saved test output' }, 'session-a');
+  const completed = await handleMcp({ method: 'tools/call', params: { name: 'set_work_state', arguments: { action: 'update', expected_revision: 3, status: 'completed', completion_evidence: 'Saved independent review and test output' }, _meta: { sessionId: 'session-a' } } }, client);
   assert.equal(completed.isError, false);
   assert.equal(completed.structuredContent.completion_verified, false);
   const reread = JSON.parse((await execute(process.execPath, [cli, 'get_work_state'], { env, windowsHide: true, timeout: 10000 })).stdout);
