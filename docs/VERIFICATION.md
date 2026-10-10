@@ -2,6 +2,43 @@
 
 [한국어](VERIFICATION.ko.md)
 
+## Work-state candidate checks
+
+On 2026-10-10, an independent Windows run checked core commit `993d0a7` with the real Codex opt-in enabled.
+It passed 249 of 250 tests, skipped one existing platform case, and failed none.
+The author's earlier run had one local port conflict.
+That earlier failure is not counted as a pass.
+Integrated candidate `648c7d1` passed 11 independent hook and integration tests.
+These tests cover revision conflicts, caller scope, the single-continuation limit, and interrupt revocation.
+They do not establish that a real model completes project work.
+
+Two isolated `gpt-6.1-sol` runs returned action plans for an intermediate merge and a user stop.
+Both plans met the fixture rules.
+The runs reported 29,509 tokens in total.
+The 20,000-token threshold was checked between runs and was exceeded by the second run.
+It was not a hard token or cost limit.
+These observations are a small plan smoke check, not a team trial or a measurement of the Stop feature's effect.
+No baseline-to-treatment improvement is claimed.
+Historical CI and archive results below remain limited to their stated commits.
+
+### Host Stop and Interrupt checks
+
+Isolated Windows checks used Codex CLI 0.161.0 with a local mock model.
+The CLI delivered `turn_id` and boolean `stop_hook_active` to Stop hooks.
+A blocking Stop response caused one extra model request.
+The event order was `UserPromptSubmit`, `Stop(false)`, then `Stop(true)` for the same turn.
+The synthetic continuation did not produce another `UserPromptSubmit` event in this tested version.
+
+An independent app-server check delayed the first Stop response behind a barrier.
+With no interrupt, it made two model requests and completed the turn.
+With `turn/interrupt` before barrier release, it made one request and ended with status `interrupted`.
+An `Interrupt` hook event occurred and no continuation request followed.
+The CLI check bypassed hook trust for that invocation in a temporary fixture home.
+The app-server check registered only the three reviewed fixture keys and hashes in its temporary home.
+Operating daemon settings were not changed.
+These results establish host protocol behavior for the tested version, not model task quality.
+Use the [evaluation guide](COORDINATION_EVALUATION.md) to repeat the public checks and interpret their limits.
+
 ## Recorded CI baseline
 
 [GitHub Actions run 37946075955](https://github.com/doscode-kr/codex-cross-session-messaging/actions/runs/37946075955) passed on 2026-10-09.

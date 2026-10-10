@@ -39,6 +39,7 @@ Changing the shell environment does not change an existing broker.
 Do not restart an operating broker to obtain another continuation.
 The plugin does not automatically approve hook trust.
 Review the hooks in Codex before trusting them.
+The returned `continuation.enabled` value describes the broker setting, not hook trust or successful host execution.
 
 The setting enables a policy; it is not proof of user approval for a task.
 An `active` declaration is also not proof of approval.
