@@ -4,6 +4,7 @@
 
 Plugin files, marketplace registration, and message data are separate items.
 The default removal keeps message data.
+It also keeps the optional `work-state-v1.json` work reports.
 If the broker recorded a journal failure, it cannot save subscription cancellations.
 Skip the cancellation step in that case.
 An explicit broker stop preserves subscriptions and journal events after that failure.
@@ -53,7 +54,7 @@ It stops if it finds an unrecognized plugin cache or an unsafe linked path.
 
 ## Remove default message data
 
-Warning: Data cleanup removes saved messages and registrations.
+Warning: Data cleanup removes saved messages, registrations, and work reports.
 The data cannot be recovered from the plugin after deletion.
 
 1. Save any message records you need.
@@ -73,7 +74,10 @@ The data cannot be recovered from the plugin after deletion.
    ```
 
 Cleanup applies only to verified product files in the standard `<CODEX_HOME>/cross-session` directory.
-The cleanup targets are `events.jsonl` and `auth-token`.
+The cleanup targets are `events.jsonl`, `auth-token`, and an existing `work-state-v1.json`.
+The script checks the work state schema and size before cleanup.
+An invalid work state file stops cleanup before plugin removal.
+Keep that file for manual inspection.
 Other files remain in place.
 It does not remove the whole Codex settings directory.
 It does not automatically delete a custom `CROSS_SESSION_HOME` directory.
@@ -136,7 +140,7 @@ You can remove that checkout as a separate file operation after removal.
 
 ## Manual Windows data removal after an alias refusal
 
-Warning: Manual data removal permanently deletes saved messages and registrations.
+Warning: Manual data removal permanently deletes saved messages, registrations, and work reports.
 
 1. Save the records you need from the runtime directory.
 2. If the journal is healthy, cancel idle notification subscriptions from their original sessions.
@@ -148,7 +152,9 @@ Warning: Manual data removal permanently deletes saved messages and registration
 8. Confirm that `events.jsonl` and `auth-token` belong to this plugin.
 9. Delete only `events.jsonl` from that directory.
 10. Delete only `auth-token` from that directory.
-11. Remove the runtime directory only if it is empty.
+11. If present, confirm that `work-state-v1.json` belongs to this plugin.
+12. Delete only that confirmed work state file.
+13. Remove the runtime directory only if it is empty.
 
 Use `node plugins/cross-session/src/cli.mjs broker-stop` with the same message environment that each broker used.
 Set `CROSS_SESSION_HOME` to that broker's runtime path spelling when needed.

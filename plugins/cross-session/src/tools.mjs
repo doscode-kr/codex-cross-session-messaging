@@ -5,6 +5,13 @@ const make = (name, description, properties = {}, required = [], readOnly = fals
   annotations: { readOnlyHint: readOnly, destructiveHint: false, openWorldHint: false }
 });
 export const tools = [
+  make('get_work_state', 'Read your bounded work report. Completion is a model report, not verified evidence. Runtime continuation is disabled by default and is not restored after a broker restart.', {}, [], true),
+  make('set_work_state', 'Save your work report with a revision check. Start requires objective, scope, completion_criteria, and next_action. Update cannot change scope. Completed requires completion_evidence. This tool cannot restore continuation after an input or interrupt.', {
+    action: { type: 'string', enum: ['start', 'update'] }, expected_revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+    objective: { ...text, maxLength: 500 }, scope: { ...text, maxLength: 1000 }, completion_criteria: { ...text, maxLength: 1000 },
+    next_action: { ...text, maxLength: 1000 }, progress_evidence: { ...text, maxLength: 1000 }, completion_evidence: { ...text, maxLength: 1000 },
+    status: { type: 'string', enum: ['active', 'paused', 'completed', 'blocked', 'canceled'] }
+  }, ['action', 'expected_revision']),
   make('list_agents', 'List loaded independent sessions on this computer. Same-project sessions appear first; other projects are allowed. Status is a hint, not task-completion evidence.', {}, [], true),
   make('register_session', 'Set a unique display name for the calling session. Caller identity comes from Codex metadata, not arguments.', { name: text }),
   make('send_message', 'Immediately deliver peer text. Busy sessions use turn/steer; idle sessions use turn/start. Never queue or interrupt. An accepted result does not prove the recipient read or completed the request.', { to: text, message: text, notify_when_idle: { type: 'boolean' }, reply_to: text }, ['to', 'message']),
