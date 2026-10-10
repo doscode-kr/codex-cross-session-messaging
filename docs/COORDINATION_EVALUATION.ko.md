@@ -106,3 +106,41 @@ null 지표는 성공을 뜻하지 않습니다.
 그 평가는 같은 상황에서 기능의 사용 여부를 비교해야 합니다.
 모형 응답 서버를 사용하는 실제 Codex 시험은 hook 순서를 검사할 수 있습니다.
 그 시험은 실제 모델의 공동 작업 품질을 입증하지 않습니다.
+
+## 실제 Codex 호스트 검사
+
+[Stop 시험](../tests/real-codex-stop.test.mjs)은 제품의 `runHook`에 고정된 시험 정책을 연결합니다.
+이 시험은 지속 실행을 끈 상태와 켠 상태를 비교합니다.
+각 상태의 모형 모델 요청은 한 번과 두 번이어야 합니다.
+추가 실행은 같은 turn ID를 유지해야 합니다.
+추가 실행의 `stop_hook_active`는 true여야 합니다.
+추가 실행은 `UserPromptSubmit`을 다시 발생시키면 안 됩니다.
+
+[Interrupt 시험](../tests/real-codex-interrupt.test.mjs)은 Stop hook을 시험 장벽에서 기다리게 합니다.
+이 시험은 장벽을 풀기 전에 `turn/interrupt`를 보냅니다.
+호스트는 중단된 turn을 보고해야 합니다.
+늦은 block 응답은 다음 모형 요청을 시작하면 안 됩니다.
+대조군은 한 번 더 실행해야 합니다.
+
+이 시험들은 자체 Codex 프로세스를 시작합니다.
+이 시험들은 모형 모델 응답을 사용합니다.
+인증은 복사하지 않습니다.
+Interrupt 시험은 임시 Codex 홈에서 정확한 시험 hook 해시만 신뢰합니다.
+기존 hook 신뢰 설정은 바꾸지 않습니다.
+Windows에서는 PowerShell 탐색을 위해 `USERPROFILE`을 유지합니다.
+`CODEX_HOME`은 임시 디렉터리를 사용합니다.
+두 시험은 기본으로 생략합니다.
+
+1. 시험 프로세스에 시험 옵션을 설정합니다.
+2. 두 호스트 시험을 실행합니다.
+
+```sh
+CROSS_SESSION_REAL_CODEX_TEST=1 node --test tests/real-codex-stop.test.mjs tests/real-codex-interrupt.test.mjs
+```
+
+PowerShell에서는 다음 명령을 사용합니다.
+
+```powershell
+$env:CROSS_SESSION_REAL_CODEX_TEST = '1'
+node --test tests/real-codex-stop.test.mjs tests/real-codex-interrupt.test.mjs
+```

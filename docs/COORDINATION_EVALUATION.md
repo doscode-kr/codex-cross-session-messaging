@@ -59,3 +59,25 @@ The result uses [result.schema.json](../scripts/evaluation/result.schema.json). 
 The oracle uses the selected fixture and the returned actions. It does not accept a score supplied by the model. Raw model output, stderr, and authentication values are excluded from the result. Keep saved evaluation results outside Git.
 
 To test feature effects, a separate evaluation must observe actual tool actions and compare the same cases with the feature enabled and disabled. A real Codex host test with a mock response server can check hook event order. It cannot establish real model coordination quality.
+
+## Real Codex host checks
+
+The [Stop test](../tests/real-codex-stop.test.mjs) connects the product `runHook` to a fixed fixture policy. It compares the hook with continuation disabled and enabled. The host must make one or two mock model requests, respectively. The synthetic continuation must keep the same turn ID. It must set `stop_hook_active` to true. It must not submit another `UserPromptSubmit` event.
+
+The [Interrupt test](../tests/real-codex-interrupt.test.mjs) holds a Stop hook at a barrier. It sends `turn/interrupt` before it releases the hook. The host must report an interrupted turn. A late block response must not start another mock request. The baseline must continue once.
+
+These tests start their own Codex processes. They use mock model responses and copy no authentication. The Interrupt test trusts only the exact fixture hashes in its temporary Codex home. It does not change your existing hook trust. On Windows, the tests retain `USERPROFILE` for PowerShell discovery. They still use a temporary `CODEX_HOME`. Both tests are skipped by default.
+
+1. Set the test flag for the test process.
+2. Run the two host tests.
+
+```sh
+CROSS_SESSION_REAL_CODEX_TEST=1 node --test tests/real-codex-stop.test.mjs tests/real-codex-interrupt.test.mjs
+```
+
+Use this command in PowerShell:
+
+```powershell
+$env:CROSS_SESSION_REAL_CODEX_TEST = '1'
+node --test tests/real-codex-stop.test.mjs tests/real-codex-interrupt.test.mjs
+```
