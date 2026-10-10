@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync 
 import { join } from 'node:path';
 import { options, preflight, safePath, safeTree, lifecyclePaths, codexRunner, inventory, pluginId, marketplaceName, ownsMarketplace, ownsPluginSource, validateCache, assertRuntimeSpelling, readInstallationRecord } from './lifecycle.mjs';
 import { validateRuntimeJournal } from './runtime-journal.mjs';
+import { validateWorkStateFile, workStateFile } from '../plugins/cross-session/src/work-state.mjs';
 
 async function runtimePlan(home, dryRun) {
   const runtime = lifecyclePaths(home).runtime;
@@ -15,6 +16,9 @@ async function runtimePlan(home, dryRun) {
     throw new Error('Runtime ownership cannot be confirmed. Keep the runtime files and inspect them yourself.');
   }
   validateRuntimeJournal(eventFile);
+  const workFile = join(runtime, workStateFile);
+  const files = [tokenFile, eventFile];
+  if (existsSync(workFile)) { validateWorkStateFile(workFile); files.push(workFile); }
   await assertRuntimeSpelling(runtime);
   if (!dryRun) {
     const root = realpathSync(runtime);
@@ -24,12 +28,12 @@ async function runtimePlan(home, dryRun) {
     try {
       await fetch(`http://127.0.0.1:${port}/health`, { method: 'POST', headers: { authorization: `Bearer ${readFileSync(tokenFile, 'utf8')}`, 'content-type': 'application/json' }, body: JSON.stringify({ instance }), signal: AbortSignal.timeout(1500) });
     } catch (error) {
-      if (error.cause?.code === 'ECONNREFUSED') return [tokenFile, eventFile];
+      if (error.cause?.code === 'ECONNREFUSED') return files;
       throw new Error('The broker state is unknown. Stop the broker before you purge runtime data.');
     }
     throw new Error('A service is active on the broker port. Stop the broker before you purge runtime data.');
   }
-  return [tokenFile, eventFile];
+  return files;
 }
 
 async function uninstall() {

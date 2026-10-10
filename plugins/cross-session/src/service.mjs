@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { resolve, normalize } from 'node:path';
+import { resolve, normalize, dirname } from 'node:path';
 import { CrossSessionError, requireText, errorData } from './errors.mjs';
 import { displayStatus } from './native.mjs';
+import { WorkState } from './work-state.mjs';
 
 const pendingDelivery = Symbol('pendingDelivery');
 
@@ -11,7 +12,7 @@ function sameFolder(a, b) {
   return canonical(a) === canonical(b);
 }
 export class MessagingService {
-  constructor(store, native) {
+  constructor(store, native, workState = new WorkState(dirname(store.path))) {
     this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve();
     this.deliveries = new Set();
     this.recipients = new Map();
@@ -21,6 +22,7 @@ export class MessagingService {
     this.refreshGeneration = 0;
     this.liveGeneration = 0;
     this.stopping = false;
+    this.workState = workState;
   }
   run(action) {
     const result = this.serial.then(action);
@@ -80,12 +82,16 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    await this.refresh({ persistLeader: method !== 'list_idle_notifications' });
+    await this.refresh({ persistLeader: !['list_idle_notifications', 'get_work_state', 'set_work_state'].includes(method) });
     const result = await this.run(() => {
       this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
       const caller = this.identity(sessionId);
       switch (method) {
+        case 'get_work_state':
+          if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) throw new CrossSessionError('INVALID_ARGUMENT', 'get_work_state takes no arguments.');
+          return this.workState.get(caller.id);
+        case 'set_work_state': return this.workState.set(caller.id, args);
         case 'list_agents': {
           const agents = [...this.live.values()].map(thread => ({ ...this.identity(thread.id), status: displayStatus(thread), activeFlags: thread.status?.activeFlags ?? [], pluginRegistered: this.store.sessions.has(thread.id), sameProject: sameFolder(this.store.sessions.get(thread.id)?.projectRoot ?? thread.cwd, this.store.sessions.get(caller.id)?.projectRoot ?? caller.cwd) }));
           agents.sort((a, b) => Number(b.sameProject) - Number(a.sameProject) || a.name.localeCompare(b.name));
@@ -276,14 +282,18 @@ export class MessagingService {
   async hook(input, projectRoot) {
     this.requireRunning();
     if (input.agent_id) return {}; // Parent IDs in subagent hooks must not impersonate the root.
+    // A new input must revoke eligibility before an awaited native refresh.
+    if (['Interrupt', 'UserPromptSubmit', 'SessionStart', 'SessionEnd'].includes(input.hook_event_name)) this.workState.revoke(input.session_id, input.hook_event_name);
     await this.refresh();
     return this.run(() => {
       this.requireRunning();
       const id = input.session_id;
       this.identity(id);
+      const stopPolicy = this.workState.hook(id, input, !this.store.failure && !this.store.closed);
+      if (input.hook_event_name === 'Stop' && (this.store.failure || this.store.closed)) return { sessionId: id, leader: this.store.leader, ...(stopPolicy ? { stopPolicy } : {}) };
       this.store.record('session', { id, permissionMode: input.permission_mode ?? this.store.sessions.get(id)?.permissionMode ?? 'unknown', ...(projectRoot ? { projectRoot } : {}), updatedAt: new Date().toISOString() });
       if (input.hook_event_name === 'SessionEnd' && this.store.leader === id) this.store.record('leader', null);
-      return { sessionId: id, leader: this.store.leader };
+      return { sessionId: id, leader: this.store.leader, ...(stopPolicy ? { stopPolicy } : {}) };
     });
   }
   async tick() {
