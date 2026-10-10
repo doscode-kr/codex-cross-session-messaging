@@ -130,6 +130,7 @@ Interrupt 시험은 임시 Codex 홈에서 정확한 시험 hook 해시만 신�
 Windows에서는 PowerShell 탐색을 위해 `USERPROFILE`을 유지합니다.
 `CODEX_HOME`은 임시 디렉터리를 사용합니다.
 두 시험은 기본으로 생략합니다.
+Stop 시험은 격리된 CLI 실행에서 검토한 시험 hook에 `--dangerously-bypass-hook-trust`를 사용합니다.
 
 1. 시험 프로세스에 시험 옵션을 설정합니다.
 2. 두 호스트 시험을 실행합니다.
