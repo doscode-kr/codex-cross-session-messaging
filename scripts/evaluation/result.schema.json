@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Coordination evaluation result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "scope", "model", "budget", "cases", "halted", "metrics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "mode": { "enum": ["scripted", "real-model-plan"] },
+    "scope": { "const": "synthetic-action-plans" },
+    "model": { "type": ["string", "null"] },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxRuns", "perRunMs", "totalMs", "observedTokenThreshold", "tokenThresholdIsHardCap", "dollarCost", "apiKeyAllowed"],
+      "properties": {
+        "maxRuns": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "perRunMs": { "type": "integer", "minimum": 1, "maximum": 120000 },
+        "totalMs": { "type": "integer", "minimum": 1, "maximum": 300000 },
+        "observedTokenThreshold": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "tokenThresholdIsHardCap": { "const": false },
+        "dollarCost": { "type": "null" },
+        "apiKeyAllowed": { "const": false }
+      }
+    },
+    "cases": {
+      "type": "array", "maxItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "actions", "metrics", "usage", "error"],
+        "properties": {
+          "id": { "enum": ["intermediate-merge", "review-wait", "peer-conflict", "restored-goal", "user-stop"] },
+          "status": { "enum": ["passed", "behavior-failure", "infrastructure-error"] },
+          "actions": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 1, "maxItems": 12, "items": { "enum": ["work", "verify", "report", "wait", "finish", "stop", "edit_peer"] } }] },
+          "metrics": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/metrics" }] },
+          "usage": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["inputTokens", "outputTokens", "totalTokens"], "properties": { "inputTokens": { "type": "integer", "minimum": 0 }, "outputTokens": { "type": "integer", "minimum": 0 }, "totalTokens": { "type": "integer", "minimum": 0 } } }] },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "halted": { "type": ["string", "null"] },
+    "metrics": { "$ref": "#/$defs/metrics" }
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["userNudges", "prematureStops", "duplicateWork", "editConflicts", "missedReports", "stopViolations"],
+      "properties": {
+        "userNudges": { "type": "integer", "minimum": 0 },
+        "prematureStops": { "type": "integer", "minimum": 0 },
+        "duplicateWork": { "type": "integer", "minimum": 0 },
+        "editConflicts": { "type": "integer", "minimum": 0 },
+        "missedReports": { "type": "integer", "minimum": 0 },
+        "stopViolations": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
