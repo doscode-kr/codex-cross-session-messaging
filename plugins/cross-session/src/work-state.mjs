@@ -15,7 +15,7 @@ function text(value, limit, required = false) {
   if (typeof value !== 'string' || value.length > limit || (required && !value.trim()) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(value)) throw invalid();
   return value.trim();
 }
-function validateEntry(value, version = 2) {
+export function validateWorkStateEntry(value, version = 2) {
   const keys = ['owner', 'revision', 'task_id', 'status', 'created_at', 'updated_at', ...Object.keys(fields), ...(version === 2 ? ['checklist'] : [])];
   if (!object(value) || Object.keys(value).some(key => !keys.includes(key)) || keys.some(key => !Object.hasOwn(value, key))) throw invalid();
   text(value.owner, 200, true);
@@ -41,7 +41,7 @@ export function validateWorkStateFile(path) {
     const value = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw));
     if (!object(value) || Object.keys(value).length !== 2 || ![1, 2].includes(value.version) || !Array.isArray(value.states) || value.states.length > maxEntries) throw invalid();
     const seen = new Set();
-    for (const entry of value.states) { validateEntry(entry, value.version); if (seen.has(entry.owner)) throw invalid(); seen.add(entry.owner); }
+    for (const entry of value.states) { validateWorkStateEntry(entry, value.version); if (seen.has(entry.owner)) throw invalid(); seen.add(entry.owner); }
     return value.states.map(entry => value.version === 1 ? { ...entry, checklist: null } : entry);
   } catch { throw unavailable(); }
   finally { if (fd !== undefined) closeSync(fd); }
@@ -149,7 +149,7 @@ export class WorkState {
         entry.checklist = createChecklist(args.checklist);
       } else applyAttempt(entry, args, at);
     }
-    validateEntry(entry);
+    validateWorkStateEntry(entry);
     const runtime = this.runtimeFor(owner, true);
     const states = new Map(this.states); states.set(owner, entry);
     this.save(states); this.states = states;
