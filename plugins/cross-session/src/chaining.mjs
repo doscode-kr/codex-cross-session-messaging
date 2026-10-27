@@ -54,7 +54,8 @@ export class Chaining {
     const chainId = chain(args.chain_id);
     const source = this.source(state, owner, chainId, args.source_session_id);
     if (Object.keys(state.bindings).length >= this.store.limits.bindings) throw chainingError('LIMIT', 'The binding limit was reached. No binding was removed.');
-    return { id: randomUUID(), session_id: owner, chain_id: chainId, ...source, latest_checkpoint_id: null, created_at: at(this.now) };
+    return { id: randomUUID(), session_id: owner, chain_id: chainId, ...source, latest_checkpoint_id: null,
+      restore_pending: source.pinned_checkpoint_id !== null, created_at: at(this.now) };
   }
   async bind(owner, args) {
     session(owner); argsOnly(args, ['chain_id', 'source_session_id']); chain(args.chain_id);
@@ -133,7 +134,7 @@ export class Chaining {
       this.verifyTicket(entry);
       if (Object.keys(state.bindings).length >= this.store.limits.bindings) throw chainingError('LIMIT', 'The binding limit was reached. No binding was removed.');
       const binding = { id: randomUUID(), session_id: owner, chain_id: entry.chain_id, source_session_id: entry.source_session_id,
-        pinned_checkpoint_id: entry.pinned_checkpoint_id, latest_checkpoint_id: null, created_at: at(this.now) };
+        pinned_checkpoint_id: entry.pinned_checkpoint_id, latest_checkpoint_id: null, restore_pending: true, created_at: at(this.now) };
       state.bindings[owner] = binding; entry.owner = owner; entry.binding_id = binding.id;
       this.store.writeState(state);
       return { status: 'claimed', binding: structuredClone(binding) };
@@ -145,6 +146,21 @@ export class Chaining {
     if (result.status !== 'bound') return { ...result, checkpoint: null, path: null };
     const id = currentCheckpoint(result.binding);
     return { ...result, status: 'restored', checkpoint: this.store.readCheckpoint(id), path: this.store.checkpointPath(id) };
+  }
+  async confirmRestore(owner, args) {
+    session(owner); argsOnly(args, ['expected_binding_id', 'expected_checkpoint_id']);
+    session(args.expected_binding_id); session(args.expected_checkpoint_id);
+    return this.store.transaction(state => {
+      const binding = state.bindings[owner];
+      if (!binding || binding.id !== args.expected_binding_id || currentCheckpoint(binding) !== args.expected_checkpoint_id) {
+        throw chainingError('CONFLICT', 'The binding or checkpoint changed. Read the restore state again.');
+      }
+      this.verifyBinding(binding);
+      if (!binding.restore_pending) return { status: 'already_confirmed', binding: structuredClone(binding) };
+      binding.restore_pending = false;
+      this.store.writeState(state);
+      return { status: 'confirmed', binding: structuredClone(binding) };
+    });
   }
   structured(owner) {
     const path = join(this.store.root, workStateFile);
@@ -159,6 +175,7 @@ export class Chaining {
       if (state.tombstones[owner]) return { status: 'unlinked' };
       if (!binding) return { status: 'unbound' };
       this.verifyBinding(binding);
+      if (binding.restore_pending) return { status: 'awaiting_restore' };
       const value = { version: 1, id: randomUUID(), session_id: owner, chain_id: binding.chain_id, event: args.event,
         created_at: at(this.now), structured: this.structured(owner), automatic: structuredClone(args.automatic ?? { messages: [], git: null }) };
       try { validateCheckpoint(value); } catch { throw invalid(); }

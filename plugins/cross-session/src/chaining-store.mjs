@@ -41,10 +41,15 @@ export function validateChainingState(value, limits = chainingLimits) {
   if (!exactKeys(value, ['version', 'bindings', 'tombstones', 'tickets']) || value.version !== 1) throw unavailable();
   for (const key of ['bindings', 'tombstones', 'tickets']) if (!plainObject(value[key]) || Object.keys(value[key]).length > limits[key]) throw unavailable();
   for (const [owner, binding] of Object.entries(value.bindings)) {
-    if (!uuidPattern.test(owner) || !exactKeys(binding, ['id', 'session_id', 'chain_id', 'source_session_id', 'pinned_checkpoint_id', 'latest_checkpoint_id', 'created_at'])
+    const keys = ['id', 'session_id', 'chain_id', 'source_session_id', 'pinned_checkpoint_id', 'latest_checkpoint_id', 'created_at'];
+    const legacy = exactKeys(binding, keys);
+    if (!uuidPattern.test(owner) || (!legacy && !exactKeys(binding, [...keys, 'restore_pending']))
       || binding.session_id !== owner || !uuidPattern.test(binding.id) || !chainPattern.test(binding.chain_id) || !nullableUuid(binding.source_session_id)
       || !nullableUuid(binding.pinned_checkpoint_id) || !nullableUuid(binding.latest_checkpoint_id) || !validDate(binding.created_at)
       || (binding.pinned_checkpoint_id !== null && binding.source_session_id === null)) throw unavailable();
+    if (legacy) binding.restore_pending = binding.pinned_checkpoint_id !== null && binding.latest_checkpoint_id === null;
+    if (typeof binding.restore_pending !== 'boolean'
+      || (binding.restore_pending && (binding.pinned_checkpoint_id === null || binding.latest_checkpoint_id !== null))) throw unavailable();
   }
   for (const [owner, tombstone] of Object.entries(value.tombstones)) {
     if (!uuidPattern.test(owner) || !exactKeys(tombstone, ['id', 'session_id', 'chain_id', 'checkpoint_id', 'unlinked_at'])
