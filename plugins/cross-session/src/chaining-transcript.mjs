@@ -119,5 +119,6 @@ function formatContext(result, maxBytes) {
     data.checkpoint = { id: data.checkpoint.id, session_id: data.checkpoint.session_id, chain_id: data.checkpoint.chain_id };
     data.handoff = 'Handoff text exceeds the context limit. Read the original path if needed.';
   }
+  if (tooLarge()) return `${chainingAttachment}\n${notice}\n<cross-session-handoff>\n{"status":"rejected","reason":"CHAINING_CONTEXT_TOO_LARGE"}\n</cross-session-handoff>`;
   return render();
 }
