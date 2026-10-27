@@ -4,7 +4,7 @@
 
 ## Session chaining candidate checks
 
-The final integrated code candidate `18d7385` passed an independent Windows check on 2026-10-27.
+The integrated code candidate `18d7385` passed an independent Windows check on 2026-10-27.
 With the real Codex opt-in enabled, 347 of 348 tests passed, one Windows path-alias case was skipped, and none failed.
 All 64 focused chaining and hook tests passed.
 The source, document, whitespace, and public-scope checks also passed.
@@ -51,8 +51,13 @@ The initial hook suite had a deadline failure at 3,206 ms.
 After reducing the optional child budget to 1,700 ms, the independent full rerun passed.
 That earlier failure remains part of the record.
 
-macOS and Node.js 22 were not run for this candidate.
-The repository still defines those CI jobs; no remote CI run or push was performed for this work.
+These local candidate checks did not include macOS or Node.js 22.
+The later push CI run `40522047965` passed all four Windows/macOS and Node.js 20/22 jobs on `e8db714`.
+PR CI run `40522187384` then found a concurrent checkpoint failure on Windows 20 and macOS 22.
+A competing writer could delete its temporary lock file between directory listing and inspection.
+The fix ignores only a missing lock temporary file during that inspection.
+The new regression test failed before the fix and passed after it.
+Missing durable files and other file errors still reject the write.
 
 A separate shared-daemon test with Codex 0.164.0 verified the closed-session procedure.
 The receiving CLI exited before the external CLI linked its exact UUID to the source.

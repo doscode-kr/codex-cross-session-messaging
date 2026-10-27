@@ -124,7 +124,13 @@ export class ChainingStore {
     let bytes = 0, count = 0;
     for (const name of readdirSync(this.directory)) {
       if (name === 'checkpoints') continue;
-      const stat = lstatSync(join(this.directory, name));
+      let stat;
+      try { stat = lstatSync(join(this.directory, name)); }
+      catch (error) {
+        // A contender can remove its own temporary file without the write lock.
+        if (error.code === 'ENOENT' && /^lock-\d+-\d+-[0-9a-f-]{36}\.tmp$/u.test(name)) continue;
+        throw error;
+      }
       if (!stat.isFile() || stat.isSymbolicLink()) throw unavailable();
       bytes += stat.size;
     }
