@@ -75,12 +75,12 @@ test('real Codex trust and automatic compaction preserve a verified handoff', { 
     await mkdir(cwd, { recursive: true }); await mkdir(state);
     const log = join(home, 'hooks.jsonl'), fixture = join(home, 'fixture.mjs');
     await writeFile(fixture, `import { appendFile } from 'node:fs/promises';
-import { runHook } from ${JSON.stringify(source)};
+import { runHook, writeHookOutput } from ${JSON.stringify(source)};
 let raw = ''; for await (const chunk of process.stdin) raw += chunk;
 const input = JSON.parse(raw), started = Date.now();
 const output = await runHook(input, { hook: async () => ({}) });
 await appendFile(${JSON.stringify(log)}, JSON.stringify({ event: input.hook_event_name, source: input.source, session: input.session_id, elapsed: Date.now()-started, output }) + '\\n');
-console.log(JSON.stringify(output));
+await writeHookOutput(output);
 `);
     const command = `${process.platform === 'win32' ? '& ' : ''}"${process.execPath.replaceAll('\\', '/')}" "${fixture.replaceAll('\\', '/')}"`;
     const events = ['SessionStart', 'Stop', 'PreCompact', 'SessionEnd'];
