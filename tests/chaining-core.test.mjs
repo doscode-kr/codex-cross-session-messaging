@@ -11,6 +11,10 @@ const a = '01234567-0000-4000-8000-000000000001', b = '01234567-0000-4000-8000-0
 const c = '01234567-0000-4000-8000-000000000003';
 const automatic = text => ({ messages: [{ role: 'user', text }], git: null });
 const save = (chaining, owner, text = 'Saved text', event = 'Stop') => chaining.checkpoint(owner, { event, automatic: automatic(text) });
+async function confirm(chaining, owner) {
+  const restored = await chaining.restore(owner);
+  return chaining.confirmRestore(owner, { expected_binding_id: restored.binding.id, expected_checkpoint_id: restored.checkpoint.id });
+}
 function state(work, owner, objective) {
   work.set(owner, { action: 'start', expected_revision: 0, objective, scope: 'Current user request', completion_criteria: 'Tests pass', next_action: 'Run tests',
     checklist: [{ title: 'Tests', expected_result: 'Tests pass', verification_method: 'Run tests' }] });
@@ -66,11 +70,14 @@ test('tickets pin creation time snapshots, consume once, and allow owner resume 
   assert.equal(readFileSync(chaining.store.path, 'utf8').includes(createHash('sha256').update(ticket.ticket).digest('hex')), true);
   await save(chaining, a, 'Second');
   assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'claimed');
+  assert.equal((await chaining.status(b)).binding.restore_pending, true);
+  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
   assert.equal((await chaining.restore(b)).checkpoint.id, first.checkpoint_id);
   assert.equal((await chaining.claimTicket(c, ticket.ticket)).status, 'consumed');
   assert.equal((await chaining.restore(c)).status, 'unbound');
   time += 3600000;
   assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'owner_resume');
+  await confirm(chaining, b);
   const own = await save(chaining, b, 'Owner progress', 'PreCompact');
   assert.equal((await chaining.restore(b)).checkpoint.id, own.checkpoint_id);
   assert.equal((await chaining.status(b)).binding.pinned_checkpoint_id, first.checkpoint_id);
@@ -109,6 +116,8 @@ test('unlink CAS and tombstones stop automatic rebind, save, and old owner ticke
   await assert.rejects(chaining.relink(b, { tombstone_id: randomUUID(), chain_id: 'work' }), { code: 'CHAINING_CONFLICT' });
   const relinked = await chaining.relink(b, { tombstone_id: result.tombstone.id, chain_id: 'work', source_session_id: a });
   assert.equal(relinked.status, 'bound');
+  assert.equal(relinked.binding.restore_pending, true);
+  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
   assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'mismatch');
   assert.equal((await chaining.restore(b)).checkpoint.id, source.checkpoint_id);
 });
@@ -159,6 +168,7 @@ test('retention keeps pinned sources and claimed tickets, and only cleans the sa
   await chaining.bind(b, { chain_id: 'work', source_session_id: a });
   const ticket = await chaining.createTicket({ chain_id: 'work', source_session_id: a }); await chaining.claimTicket(c, ticket.ticket);
   time += 1; const second = await save(chaining, a);
+  await confirm(chaining, b);
   time += 1; const other = await save(chaining, b);
   time += 3600000;
   const third = await save(chaining, a);
@@ -177,4 +187,65 @@ test('SessionEnd skips retention and cleanup failure does not reverse a save', a
   const result = await save(chaining, a);
   assert.equal(result.status, 'saved'); assert.match(result.warnings[0], /cleanup failed/u);
   assert.equal((await chaining.restore(a)).checkpoint.id, result.checkpoint_id);
+});
+
+test('automatic saves cannot replace a source before restore is confirmed', async t => {
+  const root = temporary(t), chaining = new Chaining(root);
+  const source = await chaining.bind(a, { chain_id: 'work' });
+  assert.equal(source.binding.restore_pending, false);
+  const saved = await save(chaining, a, 'Source marker');
+  const bound = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
+  assert.equal(bound.binding.restore_pending, true);
+  const before = readFileSync(chaining.store.path), files = readdirSync(chaining.store.checkpoints);
+  for (const event of ['Stop', 'SessionEnd', 'PreCompact']) {
+    assert.deepEqual(await save(chaining, b, 'Before first restore', event), { status: 'awaiting_restore' });
+    const restored = await new Chaining(root).restore(b);
+    assert.equal(restored.checkpoint.id, saved.checkpoint_id);
+    assert.equal(restored.checkpoint.automatic.messages[0].text, 'Source marker');
+    assert.equal(restored.binding.restore_pending, true);
+  }
+  assert.deepEqual(readFileSync(chaining.store.path), before);
+  assert.deepEqual(readdirSync(chaining.store.checkpoints), files);
+  assert.equal((await confirm(chaining, b)).status, 'confirmed');
+  assert.equal((await new Chaining(root).status(b)).binding.restore_pending, false);
+  const own = await save(chaining, b, 'Restored owner progress');
+  assert.equal(own.status, 'saved');
+  assert.equal((await chaining.restore(b)).checkpoint.id, own.checkpoint_id);
+  assert.equal((await chaining.status(b)).binding.pinned_checkpoint_id, saved.checkpoint_id);
+});
+
+test('restore confirmation checks both binding and checkpoint and rejects stale relinks', async t => {
+  const chaining = new Chaining(temporary(t));
+  await chaining.bind(a, { chain_id: 'work' }); const source = await save(chaining, a);
+  const bound = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
+  const expected = { expected_binding_id: bound.binding.id, expected_checkpoint_id: source.checkpoint_id };
+  await assert.rejects(chaining.confirmRestore(b, { ...expected, expected_binding_id: randomUUID() }), { code: 'CHAINING_CONFLICT' });
+  await assert.rejects(chaining.confirmRestore(b, { ...expected, expected_checkpoint_id: randomUUID() }), { code: 'CHAINING_CONFLICT' });
+  assert.equal((await chaining.status(b)).binding.restore_pending, true);
+  const unlinked = await chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: source.checkpoint_id });
+  await assert.rejects(chaining.confirmRestore(b, expected), { code: 'CHAINING_CONFLICT' });
+  await chaining.relink(b, { tombstone_id: unlinked.tombstone.id, chain_id: 'work', source_session_id: a });
+  await assert.rejects(chaining.confirmRestore(b, expected), { code: 'CHAINING_CONFLICT' });
+  assert.equal((await chaining.status(b)).binding.restore_pending, true);
+  assert.equal((await confirm(chaining, b)).status, 'confirmed');
+  assert.equal((await confirm(chaining, b)).status, 'already_confirmed');
+  const current = await chaining.restore(b);
+  await save(chaining, b);
+  await assert.rejects(chaining.confirmRestore(b, { expected_binding_id: current.binding.id, expected_checkpoint_id: current.checkpoint.id }), { code: 'CHAINING_CONFLICT' });
+});
+
+test('legacy binding reads infer pending restore without changing the saved index', async t => {
+  const chaining = new Chaining(temporary(t));
+  await chaining.bind(a, { chain_id: 'work' }); await save(chaining, a);
+  await chaining.bind(b, { chain_id: 'work', source_session_id: a });
+  await chaining.bind(c, { chain_id: 'work', source_session_id: a }); await confirm(chaining, c); await save(chaining, c);
+  const legacy = JSON.parse(readFileSync(chaining.store.path));
+  for (const binding of Object.values(legacy.bindings)) delete binding.restore_pending;
+  writeFileSync(chaining.store.path, JSON.stringify(legacy));
+  const before = readFileSync(chaining.store.path);
+  assert.equal((await chaining.status(a)).binding.restore_pending, false);
+  assert.equal((await chaining.restore(b)).binding.restore_pending, true);
+  assert.equal((await chaining.status(c)).binding.restore_pending, false);
+  assert.deepEqual(readFileSync(chaining.store.path), before);
+  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
 });

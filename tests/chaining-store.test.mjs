@@ -109,6 +109,42 @@ test('an index commit failure preserves its previous binding and checkpoint', as
   assert.equal(existsSync(chaining.store.lockPath), false);
 });
 
+test('failed or concurrent confirmation keeps the source pending', async t => {
+  const { root, owner, chaining } = await setup(t), target = randomUUID();
+  const source = await save(chaining, owner);
+  const bound = await chaining.bind(target, { chain_id: 'work', source_session_id: owner });
+  const expected = { expected_binding_id: bound.binding.id, expected_checkpoint_id: source.checkpoint_id };
+  const before = readFileSync(chaining.store.path), original = chaining.store.writeAtomic;
+  chaining.store.writeAtomic = () => { throw new Error('Injected confirmation failure'); };
+  await assert.rejects(chaining.confirmRestore(target, expected), { code: 'CHAINING_UNAVAILABLE' });
+  chaining.store.writeAtomic = original;
+  assert.deepEqual(readFileSync(chaining.store.path), before);
+  let release;
+  const held = chaining.store.transaction(() => new Promise(resolve => { release = resolve; }));
+  await assert.rejects(new Chaining(root).confirmRestore(target, expected), { code: 'CHAINING_BUSY' });
+  release(); await held;
+  assert.equal((await new Chaining(root).restore(target)).binding.restore_pending, true);
+  assert.equal((await save(chaining, target)).status, 'awaiting_restore');
+  assert.equal((await chaining.restore(target)).checkpoint.id, source.checkpoint_id);
+  assert.equal(readdirSync(chaining.store.checkpoints).length, 1);
+});
+
+test('invalid pending restore states fail closed', async t => {
+  const { owner, chaining } = await setup(t);
+  const source = await save(chaining, owner), target = randomUUID();
+  await chaining.bind(target, { chain_id: 'work', source_session_id: owner });
+  const original = JSON.parse(readFileSync(chaining.store.path));
+  for (const change of [
+    state => { state.bindings[target].restore_pending = 'true'; },
+    state => { state.bindings[target].latest_checkpoint_id = source.checkpoint_id; },
+    state => { state.bindings[owner].restore_pending = true; }
+  ]) {
+    const invalid = structuredClone(original); change(invalid);
+    writeFileSync(chaining.store.path, JSON.stringify(invalid));
+    await assert.rejects(chaining.restore(target), { code: 'CHAINING_UNAVAILABLE' });
+  }
+});
+
 test('a partial checkpoint write never publishes an incomplete final file', async t => {
   const { root, owner, chaining } = await setup(t);
   const first = await save(chaining, owner), before = readFileSync(chaining.store.path);
