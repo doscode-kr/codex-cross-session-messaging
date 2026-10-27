@@ -3,6 +3,8 @@ import { resolve, normalize, dirname } from 'node:path';
 import { CrossSessionError, requireText, errorData } from './errors.mjs';
 import { displayStatus } from './native.mjs';
 import { WorkState } from './work-state.mjs';
+import { Chaining } from './chaining.mjs';
+import { validateTool } from './mcp.mjs';
 
 const pendingDelivery = Symbol('pendingDelivery');
 
@@ -23,6 +25,7 @@ export class MessagingService {
     this.liveGeneration = 0;
     this.stopping = false;
     this.workState = workState;
+    this.chaining = new Chaining(dirname(store.path));
   }
   run(action) {
     const result = this.serial.then(action);
@@ -82,12 +85,23 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    await this.refresh({ persistLeader: !['list_idle_notifications', 'get_work_state', 'set_work_state'].includes(method) });
+    await this.refresh({ persistLeader: !['list_idle_notifications', 'get_work_state', 'set_work_state', 'link_chain', 'get_chain', 'unlink_chain', 'relink_chain'].includes(method) });
     const result = await this.run(() => {
       this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
       const caller = this.identity(sessionId);
       switch (method) {
+        case 'link_chain':
+        case 'get_chain':
+        case 'unlink_chain':
+        case 'relink_chain': {
+          validateTool(method, args);
+          const { detail, ...input } = args;
+          if (method === 'link_chain') return this.chaining.bind(caller.id, input);
+          if (method === 'get_chain') return this.chaining.status(caller.id);
+          if (method === 'relink_chain') return this.chaining.relink(caller.id, input);
+          return this.chaining.unlink(caller.id, { ...input, expected_checkpoint_id: input.expected_checkpoint_id === 'none' ? null : input.expected_checkpoint_id });
+        }
         case 'get_work_state':
           if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) throw new CrossSessionError('INVALID_ARGUMENT', 'get_work_state takes no arguments.');
           return this.workState.get(caller.id);

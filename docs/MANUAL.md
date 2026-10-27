@@ -8,6 +8,7 @@ You do not need a project task system.
 The broker is the local program that handles message delivery.
 It also records messages.
 For saved objectives and the optional Stop check, see [work state](CONTINUATION.md).
+For handoffs to new sessions, see [session chaining](CHAINING.md).
 
 ## 1. Prepare and install
 
@@ -329,7 +330,8 @@ After a journal storage failure, skip cancellation because the broker cannot sav
 The failed broker preserves subscriptions when it stops.
 It still blocks shutdown during message delivery.
 Follow the [storage recovery procedure](OPERATIONS.md) before you restart it.
-Closing sessions first prevents exit hooks from starting the broker again.
+Closing sessions first prevents later plugin calls from starting the broker again.
+The SessionEnd hook does not start a broker.
 Changing source files alone does not confirm an installed cache update.
 Use the [operations guide](OPERATIONS.md) when the source directory changes.
 Keep a shared marketplace registration when another plugin uses it.
