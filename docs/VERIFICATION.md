@@ -4,6 +4,12 @@
 
 ## Session chaining candidate checks
 
+The final integrated code candidate `18d7385` passed an independent Windows check on 2026-10-27.
+With the real Codex opt-in enabled, 347 of 348 tests passed, one Windows path-alias case was skipped, and none failed.
+All 64 focused chaining and hook tests passed.
+The source, document, whitespace, and public-scope checks also passed.
+This candidate includes first-restore protection and the unsupported-launch guard.
+
 On 2026-10-27, an independent Windows run checked candidate `d35fb1c` with Node.js 20.19.4.
 The full suite used `CROSS_SESSION_REAL_CODEX_TEST=1`: 338 tests passed, one was skipped, and none failed.
 The skipped runtime-purge test hit the existing Windows path-alias safety condition.
@@ -53,6 +59,8 @@ The receiving CLI exited before the external CLI linked its exact UUID to the so
 A delayed SessionEnd ran after the link and did not replace the pending source.
 On resume, the same UUID was loaded in the daemon and the first model input contained the source marker.
 After output confirmation, Stop saved the receiving session's own checkpoint.
+The 0.161.0 closed-session probe timed out while waiting for a TUI completion marker before the link step.
+It did not test link or resume, so that version's manual CLI flow remains unverified.
 
 ## Checklist candidate checks
 
