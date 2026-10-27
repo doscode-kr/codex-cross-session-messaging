@@ -72,7 +72,6 @@ node plugins/cross-session/src/cli.mjs chain link --session RECEIVING_UUID --cha
 다음 SessionStart가 고정한 인계를 복원합니다.
 Codex는 첫 입력 때 SessionStart를 실행할 수 있습니다.
 연결 명령 뒤에는 세션을 재개할 때까지 닫아 둡니다.
-첫 복원 전에 수신 세션이 저장하면 자체 체크포인트가 원본보다 먼저 선택될 수 있습니다.
 
 ## 이미 열린 세션 연결
 
@@ -88,8 +87,14 @@ MCP 도구는 Codex가 제공한 정보에서 호출자의 UUID를 확인합니�
 CLI에서는 `chain link --session UUID --chain-id ID --source-session-id UUID`를 사용합니다.
 CLI의 `--session`은 환경 변수 `CODEX_THREAD_ID`로 대신할 수 있습니다.
 연결 호출은 현재 모델 문맥을 바꾸지 않습니다.
-연결한 턴이 체크포인트를 저장하면 다음 SessionStart는 원본 대신 수신 세션의 기록을 사용합니다.
-원본 인계를 받으려면 위의 종료한 세션 대상 CLI 절차를 사용합니다.
+SessionStart가 원본 인계나 축소한 원본 참조를 출력할 때까지 연결은 `restore_pending` 상태를 유지합니다.
+이때 저장 hook은 `awaiting_restore`를 반환하며 새 체크포인트로 원본을 가리지 않습니다.
+같은 UUID의 세션을 다시 열면 인계를 받습니다.
+출력 쓰기에 성공하면 hook이 확인 기록을 저장합니다.
+확인 기록을 저장한 뒤에는 체크포인트 저장을 허용합니다.
+이 확인은 호스트나 모델이 인계를 읽었다는 증거가 아닙니다.
+확인 기록의 저장 전에 오류가 나면 다음 SessionStart가 원본 인계를 다시 출력할 수 있습니다.
+확인 결과가 불확실하면 hook은 자동으로 다시 시도하지 않습니다.
 
 ## 연결 확인과 수정
 

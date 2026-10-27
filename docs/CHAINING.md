@@ -69,7 +69,6 @@ The source must have its own saved checkpoint in the selected chain.
 The next SessionStart restores the pinned handoff.
 Codex can run SessionStart on the first input.
 Keep the receiving session closed between the link command and resume.
-A save before the first restore can create a receiving checkpoint that takes priority over the source.
 
 ## Connect an existing session
 
@@ -85,8 +84,14 @@ A connected source without its own saved checkpoint returns `CHAINING_NO_CHECKPO
 The CLI equivalent is `chain link --session UUID --chain-id ID --source-session-id UUID`.
 CLI commands can use `CODEX_THREAD_ID` instead of `--session`.
 A link call does not alter the current model context.
-If that turn then saves a checkpoint, the next SessionStart uses the receiving checkpoint instead of the source.
-For a source handoff, use the closed-session CLI procedure above.
+The binding stays in `restore_pending` until SessionStart outputs the source handoff or its bounded reference.
+While pending, save hooks return `awaiting_restore` and do not replace the source with a new checkpoint.
+Resume the same UUID to receive the handoff.
+After a successful output write, the hook records confirmation.
+Normal checkpoint saves resume after that record is saved.
+This is an output acknowledgement, not proof that the host or model read the handoff.
+If confirmation fails before commit, the next SessionStart can repeat the source handoff.
+If the confirmation result is uncertain, the hook does not retry it automatically.
 
 ## Check and correct a binding
 

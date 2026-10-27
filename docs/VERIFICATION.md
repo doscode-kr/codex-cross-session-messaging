@@ -2,6 +2,58 @@
 
 [한국어](VERIFICATION.ko.md)
 
+## Session chaining candidate checks
+
+On 2026-10-27, an independent Windows run checked candidate `d35fb1c` with Node.js 20.19.4.
+The full suite used `CROSS_SESSION_REAL_CODEX_TEST=1`: 338 tests passed, one was skipped, and none failed.
+The skipped runtime-purge test hit the existing Windows path-alias safety condition.
+The document check passed 14 language pairs and 192 local links.
+These results did not verify the real CLI launch transport.
+
+Separate CLI tests found a blocking host limit.
+With Codex 0.164.0, the new CLI's environment-only ticket did not reach SessionStart on the shared daemon.
+The hook UUID was present in that daemon's loaded-session list, so the test checked the correct daemon.
+A session config override made the ticket visible in both 0.161.0 and 0.164.0, but those CLI sessions were absent from the shared daemon.
+Creating a thread through the daemon and then running CLI resume also failed in both versions: the new thread had no saved rollout.
+The product now rejects launch before creating a ticket or process.
+The CLI and integration checks for this guard passed all nine tests.
+
+The isolated automatic-compaction test passed with Codex 0.161.0 and 0.164.0.
+Each trusted run made two local mock model requests, one compaction, and five hook calls.
+The restored marker and attachment line reached model input after compaction.
+The untrusted run made no hook calls and had neither marker nor attachment line.
+These are transport checks with a local mock, not measurements of model answer quality.
+
+The Windows counterfactual checks used the same assertions for each changed and normal implementation:
+
+| Check | Changed implementation | Normal implementation |
+|---|---|---|
+| Exact UUID source selection | Prefix match failed | Passed |
+| Unconnected session isolation | Automatic fallback failed | Passed |
+| Subagent exclusion | Removed exclusion failed | Passed |
+| Single ticket owner | Ticket reuse failed | Passed |
+| Ticket first-use expiry | Removed expiry failed | Passed |
+| Stop, PreCompact, SessionEnd saves | Removed PreCompact save failed | Passed |
+| Valid bounded JSON context | Removed cap failed | Passed |
+| Message delivery with corrupt chaining state | Coupled storage check failed | Passed |
+| Unlink blocks automatic reconnect | Ignored tombstone failed | Passed |
+| Concurrent checkpoint writes | Replaced exclusive lock failed | Passed |
+
+Actual compaction and hook trust used the trusted/untrusted host comparison above instead of a code mutation.
+The ticket checks verify storage and claim rules; they do not make CLI launch available.
+The initial hook suite had a deadline failure at 3,206 ms.
+After reducing the optional child budget to 1,700 ms, the independent full rerun passed.
+That earlier failure remains part of the record.
+
+macOS and Node.js 22 were not run for this candidate.
+The repository still defines those CI jobs; no remote CI run or push was performed for this work.
+
+A separate shared-daemon test with Codex 0.164.0 verified the closed-session procedure.
+The receiving CLI exited before the external CLI linked its exact UUID to the source.
+A delayed SessionEnd ran after the link and did not replace the pending source.
+On resume, the same UUID was loaded in the daemon and the first model input contained the source marker.
+After output confirmation, Stop saved the receiving session's own checkpoint.
+
 ## Checklist candidate checks
 
 On 2026-10-10, an independent Windows run tested candidate `1c168b5` with `CROSS_SESSION_REAL_CODEX_TEST=1`.
