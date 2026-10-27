@@ -1,11 +1,7 @@
-import { spawn } from 'node:child_process';
-import { statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
 import { settings } from './client.mjs';
 import { CrossSessionError } from './errors.mjs';
 import { callerIdentity, validateTool } from './mcp.mjs';
 import { parseCliArgs } from './cli-args.mjs';
-import { resolveCodex } from './codex.mjs';
 import { readChainingHooks } from './chaining-diagnostics.mjs';
 
 export const chainingHelp = `Session chaining
@@ -18,7 +14,8 @@ export const chainingHelp = `Session chaining
   chain doctor [--cwd PATH]
 
 CODEX_THREAD_ID can replace --session, except for launch.
-launch runs one new Codex session in this terminal. It waits for that process to exit.
+launch is unavailable: the shared daemon cannot receive a child-only ticket.
+It returns CHAINING_LAUNCH_UNSUPPORTED without creating a ticket or process.
 Use an exact source UUID with a saved checkpoint. Do not put secrets in work state.
 `;
 const methods = { link: 'link_chain', status: 'get_chain', unlink: 'unlink_chain', relink: 'relink_chain' };
@@ -37,7 +34,7 @@ function validateLaunchOptions(tokens) {
   }
 }
 
-export async function runChainingCli(tokens, { env = process.env, Chain, spawnImpl = spawn, diagnose = readChainingHooks } = {}) {
+export async function runChainingCli(tokens, { env = process.env, Chain, diagnose = readChainingHooks } = {}) {
   const [command, ...rest] = tokens;
   if (!command || command === '--help') return { help: chainingHelp };
   if (!Object.hasOwn(methods, command) && !['launch', 'doctor'].includes(command)) throw invalid('Unknown chain command. Use chain --help.');
@@ -60,7 +57,7 @@ export async function runChainingCli(tokens, { env = process.env, Chain, spawnIm
     }
     return { hooks, storage };
   }
-  let caller, binary, cwd;
+  let caller;
   if (command === 'launch') {
     if (Object.keys(args).some(key => !['chain_id', 'source_session_id', 'codex_js', 'cwd'].includes(key)) ||
         !/^[A-Za-z0-9._-]{1,80}$/.test(args.chain_id ?? '') || !uuid(args.source_session_id)) {
@@ -68,15 +65,7 @@ export async function runChainingCli(tokens, { env = process.env, Chain, spawnIm
     }
     // Check every option so a subcommand cannot follow global options.
     validateLaunchOptions(childArgs);
-    if (args.codex_js !== undefined) {
-      if (!isAbsolute(args.codex_js) || !/\.[cm]?js$/i.test(args.codex_js)) throw invalid('--codex-js requires an absolute JavaScript entry path.');
-      try { if (!statSync(args.codex_js).isFile()) throw new Error(); }
-      catch { throw invalid('The Codex JavaScript entry is not a file.'); }
-      binary = { command: process.execPath, args: [args.codex_js] };
-    } else binary = resolveCodex(env);
-    cwd = resolve(args.cwd ?? process.cwd());
-    try { if (!statSync(cwd).isDirectory()) throw new Error(); }
-    catch { throw invalid('The launch directory is not available.'); }
+    throw new CrossSessionError('CHAINING_LAUNCH_UNSUPPORTED', 'The shared Codex daemon does not receive a ticket from the new CLI process environment. No session or ticket was created. See docs/CHAINING.md.');
   } else {
     validateTool(methods[command], args);
     caller = callerIdentity({}, { CODEX_THREAD_ID: sessionId });
@@ -102,16 +91,4 @@ export async function runChainingCli(tokens, { env = process.env, Chain, spawnIm
   if (command === 'link') return chain.bind(caller, input);
   if (command === 'relink') return chain.relink(caller, input);
   if (command === 'unlink') return chain.unlink(caller, { ...input, expected_checkpoint_id: input.expected_checkpoint_id === 'none' ? null : input.expected_checkpoint_id });
-  const ticket = await chain.createTicket({ chain_id: args.chain_id, source_session_id: args.source_session_id });
-  const childEnv = { ...env, CROSS_SESSION_HOME: config.root, CROSS_SESSION_CHAIN_TICKET: ticket.ticket };
-  for (const key of Object.keys(childEnv)) if (key.toUpperCase() === 'CODEX_THREAD_ID') delete childEnv[key];
-  // Never put the ticket in argv, a shell profile, stdout, or the parent environment.
-  try {
-    const child = spawnImpl(binary.command, [...binary.args, ...childArgs], { cwd, env: childEnv, stdio: 'inherit', windowsHide: true, shell: false });
-    const exitCode = await new Promise((done, fail) => {
-      child.once('error', fail);
-      child.once('close', (code, signal) => signal ? fail(new Error('Child signal')) : done(code ?? 1));
-    });
-    return { status: 'exited', exit_code: exitCode, chain_id: ticket.chain_id, source_session_id: ticket.source_session_id, pinned_checkpoint_id: ticket.pinned_checkpoint_id };
-  } catch { throw new CrossSessionError('CHAINING_LAUNCH_FAILED', 'The new Codex process did not complete. No automatic retry was made. An unused ticket expires after ten minutes.'); }
 }

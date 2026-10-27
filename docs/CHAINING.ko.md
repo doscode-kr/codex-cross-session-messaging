@@ -37,58 +37,42 @@
 자동 대화 기록만으로는 이 내용을 충분히 전달할 수 없습니다.
 작업 상태가 없으면 복원 내용에 자동 기록만 있다는 표시를 넣습니다.
 
-## 다음 세션 열기
+## Launch 지원 상태
 
-제품 저장소에서 다음 명령을 실행합니다.
+현재 `chain launch`는 `CHAINING_LAUNCH_UNSUPPORTED`를 반환합니다.
+티켓을 만들거나 프로세스를 시작하지 않습니다.
+공유 Codex 데몬은 새 CLI 프로세스의 환경 변수를 받지 않습니다.
+따라서 자식 환경에만 넣은 티켓은 SessionStart에 도달하지 않습니다.
+Windows의 Codex 0.164.0 시험에서 이 실패를 확인했습니다.
+0.161.0과 0.164.0에서는 세션별 설정으로 티켓을 전달하면 별도 서버를 사용했습니다.
+그 서버의 세션은 이 플러그인이 사용하는 공유 데몬에서 조회되지 않았습니다.
+`--codex-js` 절대 경로나 `--no-daemon`으로도 이 제한을 해결할 수 없습니다.
+
+티켓 저장과 hook의 사용 검사는 구현했지만 지원 가능한 launch 전달 경로는 아직 없습니다.
+검사는 `claimed`, `owner_resume`, `expired`, `consumed`, `mismatch`, `missing_ticket`, `invalid_ticket`을 구분합니다.
+미사용 티켓의 기한은 10분입니다.
+소유 세션은 기한 뒤에도 재개할 수 있습니다.
+거부한 티켓으로는 인계를 주입하지 않습니다.
+티켓은 첫 사용자를 소유자로 삼으며 상위 세션의 의도를 인증하지 않습니다.
+티켓을 전역 설정이나 셸 프로필에 넣지 않습니다.
+
+## 종료한 세션에 인계 복원
+
+1. 인계를 받을 세션의 전체 UUID를 기록합니다.
+2. 해당 세션을 완전히 종료합니다.
+3. 다른 터미널에서 다음 명령을 실행합니다.
+4. 정확한 UUID로 인계를 받을 세션을 다시 엽니다.
 
 ```text
-node plugins/cross-session/src/cli.mjs chain launch --chain-id release-fix --source-session-id 11111111-0000-4000-8000-000000000001
+node plugins/cross-session/src/cli.mjs chain link --session RECEIVING_UUID --chain-id release-fix --source-session-id SOURCE_UUID
 ```
 
-예제 UUID를 실제 원본 세션의 전체 UUID로 바꿉니다.
-원본 세션에는 해당 체인의 체크포인트가 있어야 합니다.
-`launch`는 현재 터미널에서 새 Codex 프로세스 하나를 엽니다.
-명령은 그 프로세스가 끝날 때까지 기다립니다.
-플러그인이 정해진 시간에 세션을 열거나 실패한 실행을 반복하지는 않습니다.
-
-Windows에서 실행 파일을 직접 지정하려면 JavaScript 진입 파일의 절대 경로를 사용합니다.
-
-```text
-node plugins/cross-session/src/cli.mjs chain launch --chain-id release-fix --source-session-id 11111111-0000-4000-8000-000000000001 --codex-js "C:/tools/node_modules/@openai/codex/bin/codex.js"
-```
-
-이 명령은 `node <codex.js 절대경로>` 형식으로 실행합니다.
-셸 명령 문자열이나 맨 이름의 `codex.cmd`에 의존하지 않습니다.
-새 세션의 폴더는 `--cwd PATH`로 지정합니다.
-Codex 옵션 앞에는 `--`를 넣습니다.
-예를 들어 `-- --model NAME`이나 `-- --sandbox read-only`를 사용할 수 있습니다.
-`resume`, `fork`, `exec` 같은 하위 명령은 거부합니다.
-모델, 설정, 프로필, sandbox, 승인, 이미지, 기능, 로컬 모델 제공자 옵션을 지원합니다.
-단독 옵션은 `--no-alt-screen`, `--no-daemon`, `--search`, `--oss`, `--full-auto`, `--dangerously-bypass-approvals-and-sandbox`를 지원합니다.
-플러그인이 이 옵션을 자동으로 추가하지는 않습니다.
-
-`launch`는 무작위 일회용 티켓을 자식 프로세스의 환경에만 넣습니다.
-전역 설정이나 셸 프로필에는 티켓을 넣지 않습니다.
-새 세션의 첫 SessionStart hook이 티켓을 자기 UUID에 연결합니다.
-Codex는 창을 열 때가 아니라 첫 입력 때 SessionStart를 실행할 수 있습니다.
-사용하지 않은 티켓은 10분 뒤 만료됩니다.
-이미 티켓을 소유한 세션은 10분 뒤에도 재개하거나 압축할 수 있습니다.
-다른 UUID는 그 티켓을 다시 사용할 수 없습니다.
-
-| 티켓 상태 | 뜻 |
-|---|---|
-| `claimed` | 이 UUID가 사용하지 않은 티켓을 차지했습니다. |
-| `owner_resume` | 같은 소유 세션이 기존 연결을 다시 사용합니다. |
-| `expired` | 사용하기 전에 기한이 지났습니다. |
-| `consumed` | 다른 UUID가 이미 소유한 티켓입니다. |
-| `mismatch` | 티켓과 현재 세션의 연결 정보가 맞지 않습니다. |
-| `missing_ticket` | 전달한 티켓이 저장소에 없습니다. |
-| `invalid_ticket` | 티켓 형식이 잘못됐습니다. |
-
-티켓을 거부하면 원본 인계를 넣지 않습니다.
-티켓은 처음 사용한 세션을 소유자로 삼습니다.
-티켓을 물려받은 다른 자식 프로세스가 먼저 시작하면 그 프로세스가 소유할 수 있습니다.
-티켓이 상위 세션의 의도를 인증하지는 않습니다.
+두 자리표시자를 소문자 전체 UUID로 바꿉니다.
+원본 세션에는 선택한 체인의 자체 체크포인트가 있어야 합니다.
+다음 SessionStart가 고정한 인계를 복원합니다.
+Codex는 첫 입력 때 SessionStart를 실행할 수 있습니다.
+연결 명령 뒤에는 세션을 재개할 때까지 닫아 둡니다.
+첫 복원 전에 수신 세션이 저장하면 자체 체크포인트가 원본보다 먼저 선택될 수 있습니다.
 
 ## 이미 열린 세션 연결
 
@@ -103,8 +87,9 @@ MCP 도구는 Codex가 제공한 정보에서 호출자의 UUID를 확인합니�
 원본 세션에 자체 체크포인트가 없으면 `CHAINING_NO_CHECKPOINT`를 반환합니다.
 CLI에서는 `chain link --session UUID --chain-id ID --source-session-id UUID`를 사용합니다.
 CLI의 `--session`은 환경 변수 `CODEX_THREAD_ID`로 대신할 수 있습니다.
-연결한 인계는 다음 SessionStart 때 복원합니다.
-연결 명령만으로 현재 모델 문맥이 바뀌지는 않습니다.
+연결 호출은 현재 모델 문맥을 바꾸지 않습니다.
+연결한 턴이 체크포인트를 저장하면 다음 SessionStart는 원본 대신 수신 세션의 기록을 사용합니다.
+원본 인계를 받으려면 위의 종료한 세션 대상 CLI 절차를 사용합니다.
 
 ## 연결 확인과 수정
 

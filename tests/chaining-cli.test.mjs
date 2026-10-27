@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { mkdtempSync, writeFileSync, readdirSync, existsSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -62,49 +61,20 @@ test('chain CLI uses exact caller identity and compare values for unlink and rel
   ]);
 });
 
-test('launch starts one child with an environment-only ticket and an absolute JS entry', async t => {
-  const root = temporary(t), script = join(root, 'codex entry.js');
-  writeFileSync(script, '');
-  const env = { CROSS_SESSION_HOME: root, CODEX_THREAD_ID: A, CROSS_SESSION_CHAIN_TICKET: 'old-ticket' };
-  let spawns = 0, tickets = 0;
-  class Chain {
-    async createTicket(args) {
-      tickets++;
-      assert.deepEqual(args, { chain_id: 'work', source_session_id: A });
-      return { ticket: 'secret-ticket', chain_id: 'work', source_session_id: A, pinned_checkpoint_id: C };
-    }
+test('launch fails before storage access for every process mode', async t => {
+  const root = temporary(t), home = join(root, 'missing');
+  const env = { CROSS_SESSION_HOME: home, CODEX_THREAD_ID: A, CROSS_SESSION_CHAIN_TICKET: 'private-fixture' };
+  class Chain { constructor() { assert.fail('Unsupported launch must not access storage'); } }
+  for (const extra of [[], ['--codex-js', join(root, 'codex.js')], ['--', '--no-daemon'], ['--', '-c', 'model="fixture"']]) {
+    await assert.rejects(runChainingCli(['launch', '--chain-id', 'work', '--source-session-id', A, ...extra], { env, Chain }), error => {
+      assert.equal(error.code, 'CHAINING_LAUNCH_UNSUPPORTED');
+      assert.equal(error.message.includes('private-fixture'), false);
+      return true;
+    });
   }
-  const result = await runChainingCli(['launch', '--chain-id', 'work', '--source-session-id', A, '--codex-js', script, '--cwd', root, '--', '--model', 'fixture'], {
-    env, Chain, spawnImpl(command, args, options) {
-      spawns++;
-      assert.equal(command, process.execPath);
-      assert.deepEqual(args, [script, '--model', 'fixture']);
-      assert.equal(options.shell, false);
-      assert.equal(options.windowsHide, true);
-      assert.equal(options.cwd, root);
-      assert.equal(options.env.CROSS_SESSION_CHAIN_TICKET, 'secret-ticket');
-      assert.equal(options.env.CODEX_THREAD_ID, undefined);
-      const child = new EventEmitter();
-      queueMicrotask(() => child.emit('close', 7, null));
-      return child;
-    }
-  });
-  assert.equal(spawns, 1); assert.equal(tickets, 1);
-  assert.equal(result.exit_code, 7);
-  assert.equal(JSON.stringify(result).includes('secret-ticket'), false);
-  assert.equal(env.CODEX_THREAD_ID, A);
-  assert.equal(env.CROSS_SESSION_CHAIN_TICKET, 'old-ticket');
-  assert.deepEqual(readdirSync(root), ['codex entry.js']);
-});
-
-test('launch does not retry a failed process and does not print the ticket', async t => {
-  const root = temporary(t), script = join(root, 'codex.js'); writeFileSync(script, '');
-  let attempts = 0;
-  class Chain { async createTicket() { return { ticket: 'secret-ticket' }; } }
-  await assert.rejects(runChainingCli(['launch', '--chain-id', 'work', '--source-session-id', A, '--codex-js', script], {
-    env: { CROSS_SESSION_HOME: root }, Chain, spawnImpl() { attempts++; throw new Error('private error secret-ticket'); }
-  }), error => error.code === 'CHAINING_LAUNCH_FAILED' && !error.message.includes('secret-ticket'));
-  assert.equal(attempts, 1);
+  assert.equal(existsSync(home), false);
+  assert.equal(env.CROSS_SESSION_CHAIN_TICKET, 'private-fixture');
+  assert.deepEqual(readdirSync(root), []);
 });
 
 test('diagnosis combines host trust and storage use without creating missing state', async t => {

@@ -19,7 +19,7 @@ It reads the running daemon socket with `codex app-server daemon version`.
 It connects to that socket through `codex app-server proxy`.
 The `ws` dependency handles WebSocket framing over the byte proxy.
 Message delivery does not start a separate model executor.
-The explicit `chain launch` command opens one new Codex session at the user's request.
+The `chain launch` command is disabled because the shared daemon cannot receive its child-only ticket.
 
 ## Session chaining
 
@@ -32,7 +32,8 @@ Automatic transcript and Git records stay separate from that report.
 All restored content is untrusted data within the current user's scope.
 
 A launch ticket has one owner and a ten-minute first-use limit.
-The child environment carries the ticket; the stored index contains its hash.
+The stored index contains only its hash.
+Ticket storage and claims are implemented, but the CLI transport remains unsupported.
 Unlink compares the expected chain and checkpoint before saving a tombstone.
 Relink requires that tombstone's exact ID.
 Optional chaining errors do not disable message delivery.

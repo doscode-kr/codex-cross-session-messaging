@@ -4,7 +4,8 @@
 
 ## Unreleased
 
-- Add session chaining with exact UUID bindings, immutable checkpoints, and one-use launch tickets.
+- Add session chaining with exact UUID bindings and immutable checkpoints.
+- Reject `chain launch` with `CHAINING_LAUNCH_UNSUPPORTED`: the shared daemon cannot receive the child-only ticket.
 - Restore untrusted handoffs from existing work-state reports and bounded automatic records.
 - Add `chain` CLI commands and caller-owned link, status, unlink, and relink MCP tools.
 - Add read-only hook trust and chaining storage diagnostics.

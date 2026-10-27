@@ -35,57 +35,41 @@ Update these fields when a work unit ends or the next action changes.
 Automatic transcript records cannot replace this report.
 If no work state exists, the restored context says that it has automatic records only.
 
-## Open the next session
+## Launch availability
 
-Run this command from the product checkout:
+`chain launch` currently returns `CHAINING_LAUNCH_UNSUPPORTED`.
+It does not create a ticket or start a process.
+The shared Codex daemon does not receive environment variables from a newly attached CLI process.
+An environment-only ticket therefore does not reach SessionStart.
+Windows tests confirmed this failure with Codex 0.164.0.
+Passing the ticket through a session config override instead used a separate server in tests with 0.161.0 and 0.164.0.
+That server cannot provide this plugin's shared-daemon session identity.
+An absolute `--codex-js` path or `--no-daemon` does not remove this restriction.
+
+The ticket storage and hook claim checks are implemented, but a supported launch transport is still missing.
+The checks distinguish `claimed`, `owner_resume`, `expired`, `consumed`, `mismatch`, `missing_ticket`, and `invalid_ticket`.
+An unused ticket expires after ten minutes; its owner can resume after that limit.
+A rejected ticket does not inject a handoff.
+Tickets bind to their first consumer, without authenticating the parent's intent.
+Do not put tickets in global configuration or a shell profile.
+
+## Restore into a closed session
+
+1. Record the full UUID of the receiving session.
+2. Close that session completely.
+3. Run the following command from another terminal.
+4. Resume the receiving session by its exact UUID.
 
 ```text
-node plugins/cross-session/src/cli.mjs chain launch --chain-id release-fix --source-session-id 11111111-0000-4000-8000-000000000001
+node plugins/cross-session/src/cli.mjs chain link --session RECEIVING_UUID --chain-id release-fix --source-session-id SOURCE_UUID
 ```
 
-Replace the example UUID with the exact source UUID.
-The source must have a saved checkpoint in that chain.
-`launch` starts one new Codex process in the current terminal.
-It waits for that process to exit.
-It does not start sessions on a timer or retry a failed process.
-
-On Windows, select an absolute JavaScript entry if needed:
-
-```text
-node plugins/cross-session/src/cli.mjs chain launch --chain-id release-fix --source-session-id 11111111-0000-4000-8000-000000000001 --codex-js "C:/tools/node_modules/@openai/codex/bin/codex.js"
-```
-
-This form runs `node <absolute codex.js path>` without a shell command string.
-It does not depend on a bare `codex.cmd` command.
-Use `--cwd PATH` to select the new session's directory.
-Use `--` before supported Codex options such as `--model NAME`, `--profile NAME`, or `--sandbox read-only`.
-The command rejects subcommands such as `resume`, `fork`, and `exec`.
-It accepts model, config, profile, sandbox, approval, image, feature, and local-provider options.
-It also accepts the `--no-alt-screen`, `--no-daemon`, `--search`, `--oss`, `--full-auto`, and `--dangerously-bypass-approvals-and-sandbox` flags.
-The plugin does not add those flags itself.
-
-`launch` puts a random one-use ticket only in the child process environment.
-It does not save the ticket in shell profiles or global settings.
-The first SessionStart hook claims it for that session UUID.
-Codex can run SessionStart on the first input, rather than when the window opens.
-The unused ticket expires after ten minutes.
-Its owner can resume or compact after that time.
-Another UUID cannot reuse it.
-
-| Ticket status | Meaning |
-|---|---|
-| `claimed` | This UUID claimed the unused ticket. |
-| `owner_resume` | The same owner resumed its binding. |
-| `expired` | The unused ticket is too old. |
-| `consumed` | Another UUID owns the ticket. |
-| `mismatch` | The ticket does not match this session's binding. |
-| `missing_ticket` | The supplied ticket is not in the store. |
-| `invalid_ticket` | The ticket format is invalid. |
-
-A rejected ticket does not inject the source handoff.
-The ticket uses its first consumer as owner.
-An unintended child process that inherits the ticket can claim it first.
-The ticket does not authenticate the parent session's intent.
+Replace both placeholders with full lowercase UUIDs.
+The source must have its own saved checkpoint in the selected chain.
+The next SessionStart restores the pinned handoff.
+Codex can run SessionStart on the first input.
+Keep the receiving session closed between the link command and resume.
+A save before the first restore can create a receiving checkpoint that takes priority over the source.
 
 ## Connect an existing session
 
@@ -100,7 +84,9 @@ It has no caller session argument.
 A connected source without its own saved checkpoint returns `CHAINING_NO_CHECKPOINT`.
 The CLI equivalent is `chain link --session UUID --chain-id ID --source-session-id UUID`.
 CLI commands can use `CODEX_THREAD_ID` instead of `--session`.
-The next SessionStart restores the handoff; a link call does not alter the current model context.
+A link call does not alter the current model context.
+If that turn then saves a checkpoint, the next SessionStart uses the receiving checkpoint instead of the source.
+For a source handoff, use the closed-session CLI procedure above.
 
 ## Check and correct a binding
 

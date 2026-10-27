@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -52,31 +52,22 @@ test('corrupt chaining storage leaves actual broker message delivery available',
   assert.equal(readFileSync(path, 'utf8'), '{broken-private-state');
 });
 
-test('chain CLI launches one real child and claims only the fixed source checkpoint', async t => {
+test('actual CLI rejects launch without running an entry or changing saved checkpoints', async t => {
   const root = temporary(t), chain = new Chaining(root);
   await chain.bind(A, { chain_id: 'work' });
-  await chain.bind(C, { chain_id: 'work' });
-  const source = await chain.checkpoint(A, { event: 'Stop', automatic: automatic('SOURCE-A-ONLY') });
-  await chain.checkpoint(C, { event: 'Stop', automatic: automatic('SOURCE-C-NOT-REQUESTED') });
-  const entry = join(root, 'codex fixture.mjs'), output = join(root, 'child-result.json');
-  const module = new URL('../plugins/cross-session/src/chaining.mjs', import.meta.url).href;
-  writeFileSync(entry, `import { writeFileSync } from 'node:fs';
-import { Chaining } from ${JSON.stringify(module)};
-const chain = new Chaining(process.env.CROSS_SESSION_HOME);
-const claim = await chain.claimTicket(${JSON.stringify(B)}, process.env.CROSS_SESSION_CHAIN_TICKET);
-const restored = await chain.restore(${JSON.stringify(B)});
-writeFileSync(${JSON.stringify(output)}, JSON.stringify({ claim: claim.status, restored, inheritedCaller: process.env.CODEX_THREAD_ID ?? null }));
-`);
-  const result = await run(process.execPath, ['plugins/cross-session/src/cli.mjs', 'chain', 'launch', '--chain-id', 'work', '--source-session-id', A, '--codex-js', entry], {
+  await chain.checkpoint(A, { event: 'Stop', automatic: automatic('SOURCE-A-ONLY') });
+  const statePath = join(root, 'chaining-v1', 'state.json');
+  const before = readFileSync(statePath, 'utf8');
+  const entry = join(root, 'codex fixture.mjs'), output = join(root, 'unexpected-child.json');
+  writeFileSync(entry, 'import { writeFileSync } from "node:fs"; writeFileSync(' + JSON.stringify(output) + ', "started");');
+  await assert.rejects(run(process.execPath, ['plugins/cross-session/src/cli.mjs', 'chain', 'launch', '--chain-id', 'work', '--source-session-id', A, '--codex-js', entry], {
     env: { ...process.env, CROSS_SESSION_HOME: root, CODEX_THREAD_ID: A }, windowsHide: true, timeout: 10000
+  }), error => {
+    assert.notEqual(error.code, 0);
+    assert.match(error.stdout + error.stderr, /CHAINING_LAUNCH_UNSUPPORTED/);
+    return true;
   });
-  const cli = JSON.parse(result.stdout), child = JSON.parse(readFileSync(output, 'utf8'));
-  assert.equal(cli.exit_code, 0);
-  assert.equal(child.claim, 'claimed');
-  assert.equal(child.inheritedCaller, null);
-  assert.equal(child.restored.checkpoint.id, source.checkpoint_id);
-  assert.equal(JSON.stringify(child).includes('SOURCE-A-ONLY'), true);
-  assert.equal(JSON.stringify(child).includes('SOURCE-C-NOT-REQUESTED'), false);
-  assert.equal(JSON.stringify(cli).includes('ticket'), false);
-  assert.equal(readdirSync(join(root, 'chaining-v1', 'checkpoints')).length, 2);
+  assert.equal(existsSync(output), false);
+  assert.equal(readFileSync(statePath, 'utf8'), before);
+  assert.equal(readdirSync(join(root, 'chaining-v1', 'checkpoints')).length, 1);
 });
