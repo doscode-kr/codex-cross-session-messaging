@@ -133,7 +133,14 @@ await writeHookOutput(output);
     const completed = host.notifications.find(value => value.method === 'turn/completed');
     assert.equal(completed.params.turn.status, 'completed');
     await host.rpc('thread/archive', { threadId: thread.id });
-    await pause(300);
+    if (trusted) {
+      await waitFor(async () => {
+        let raw;
+        try { raw = await readFile(log, 'utf8'); }
+        catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+        return raw.split('\n').slice(0, -1).some(line => JSON.parse(line).event === 'SessionEnd');
+      });
+    } else await pause(300);
     let records = []; try { records = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     assert.ok(compactions > 0, 'The real host must compact during the fixture turn.');
     const final = requests.filter(value => !value.compact).at(-1);
