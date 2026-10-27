@@ -5,6 +5,7 @@
 Plugin files, marketplace registration, and message data are separate items.
 The default removal keeps message data.
 It also keeps the optional `work-state-v1.json` work reports.
+It keeps [session chaining](CHAINING.md) checkpoints and bindings, including with `--purge-runtime`.
 If the broker recorded a journal failure, it cannot save subscription cancellations.
 Skip the cancellation step in that case.
 An explicit broker stop preserves subscriptions and journal events after that failure.
@@ -45,7 +46,8 @@ Add `--dry-run` to examine that plan first.
 Use the direct Node.js command for options in PowerShell.
 The script does not remove Codex itself or restart the Codex daemon.
 If `broker-stop` returns `BROKER_OFFLINE`, no broker is running for that message directory.
-Close plugin sessions before broker shutdown because their exit hooks can start the broker again.
+Close plugin sessions before broker shutdown to prevent later plugin calls from starting it again.
+The SessionEnd hook does not start a broker.
 The script removes the dedicated marketplace only when it recognizes the source and no other installed plugin uses it.
 The source must list only the cross-session plugin.
 It keeps an unknown or shared marketplace.

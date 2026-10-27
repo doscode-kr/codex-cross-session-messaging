@@ -144,8 +144,13 @@ Git worktree는 공통 Git 폴더로 프로젝트를 구분합니다.
 | `cancel_idle_notification` | 현재 세션의 알림 신청을 취소합니다. |
 | `get_work_state` | 현재 세션의 작업 요약과 리비전을 읽습니다. |
 | `set_work_state` | 리비전을 확인한 뒤 현재 세션의 체크리스트, 시도 결과, 작업 요약을 저장합니다. |
+| `link_chain` | 현재 세션을 체인과 정확한 원본 체크포인트에 연결합니다. |
+| `get_chain` | 현재 세션의 연결 정보와 해제 기록을 읽습니다. |
+| `unlink_chain` | 체인과 체크포인트 ID를 비교한 뒤 연결을 해제합니다. |
+| `relink_chain` | 정확한 해제 기록 ID로 다시 연결합니다. |
 
 완료 판단 지침과 한도는 [작업 상태와 선택적 종료 검사](docs/CONTINUATION.ko.md)를 확인하세요.
+저장한 인계를 새 세션에 전달하는 방법은 [세션 체이닝](docs/CHAINING.ko.md)에 있습니다.
 
 MCP 도구 결과는 기본으로 짧은 문장을 표시합니다.
 전체 결과는 `structuredContent`에 포함됩니다.

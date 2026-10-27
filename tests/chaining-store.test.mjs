@@ -87,6 +87,61 @@ test('checkpoint count quota rejects before retention or deletion', async t => {
   assert.equal(readdirSync(chaining.store.checkpoints).length, 2);
 });
 
+test('a departing lock contender does not prevent a checkpoint commit', async t => {
+  const { root, owner, chaining } = await setup(t);
+  const script = `
+    import fs from 'node:fs';
+    import { join } from 'node:path';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { Chaining } from ${JSON.stringify(new URL('../plugins/cross-session/src/chaining.mjs', import.meta.url).href)};
+    const chaining = new Chaining(process.argv[1]);
+    const temporary = join(chaining.store.directory, 'lock-123-0-${randomUUID()}.tmp');
+    fs.writeFileSync(temporary, 'Contender');
+    const original = fs.readdirSync;
+    let removed = false;
+    fs.readdirSync = function(path, ...args) {
+      const names = original(path, ...args);
+      if (!removed && path === chaining.store.directory) { fs.unlinkSync(temporary); removed = true; }
+      return names;
+    };
+    syncBuiltinESMExports();
+    process.stdout.write(JSON.stringify(await chaining.checkpoint(process.argv[2], { event: 'Stop', automatic: { messages: [], git: null } })));
+  `;
+  const result = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root, owner], { windowsHide: true, timeout: 10000 });
+  const saved = JSON.parse(result.stdout);
+  assert.equal(saved.status, 'saved');
+  assert.equal((await chaining.restore(owner)).checkpoint.id, saved.checkpoint_id);
+  assert.deepEqual(readdirSync(chaining.store.checkpoints), [`${saved.checkpoint_id}.json`]);
+});
+
+test('inventory still rejects missing durable files and inaccessible lock temporary files', async t => {
+  const { root, owner, chaining } = await setup(t);
+  const first = await save(chaining, owner), before = readFileSync(chaining.store.path);
+  const script = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import { join } from 'node:path';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { Chaining } from ${JSON.stringify(new URL('../plugins/cross-session/src/chaining.mjs', import.meta.url).href)};
+    const chaining = new Chaining(process.argv[1]);
+    const original = fs.lstatSync;
+    const temporary = join(chaining.store.directory, 'lock-123-0-${randomUUID()}.tmp');
+    fs.writeFileSync(temporary, 'Keep');
+    for (const [target, code] of [[chaining.store.markerPath, 'ENOENT'], [process.argv[3], 'ENOENT'], [temporary, 'EACCES']]) {
+      fs.lstatSync = function(path, ...args) {
+        if (path === target) throw Object.assign(new Error('Injected inventory error'), { code });
+        return original(path, ...args);
+      };
+      syncBuiltinESMExports();
+      await assert.rejects(chaining.checkpoint(process.argv[2], { event: 'Stop', automatic: { messages: [], git: null } }), { code: 'CHAINING_UNAVAILABLE' });
+    }
+  `;
+  await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root, owner, first.path], { windowsHide: true, timeout: 10000 });
+  assert.deepEqual(readFileSync(chaining.store.path), before);
+  assert.deepEqual(readdirSync(chaining.store.checkpoints), [`${first.checkpoint_id}.json`]);
+  assert.equal((await chaining.restore(owner)).checkpoint.id, first.checkpoint_id);
+});
+
 test('byte quota checks checkpoint and new index together before writing any checkpoint', async t => {
   const { owner, chaining } = await setup(t);
   const before = readFileSync(chaining.store.path);

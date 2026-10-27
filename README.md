@@ -138,8 +138,13 @@ Report unresolved conflicts to the leader if that role is assigned.
 | `cancel_idle_notification` | Cancel your notification request. |
 | `get_work_state` | Read this session's work summary and revision. |
 | `set_work_state` | Save this session's checklist, attempt results, and work summary with a revision check. |
+| `link_chain` | Bind this session to a chain and an exact source checkpoint. |
+| `get_chain` | Read this session's binding and unlink record. |
+| `unlink_chain` | Unlink after comparing the chain and checkpoint IDs. |
+| `relink_chain` | Connect again with the exact unlink record ID. |
 
 See [work state and the optional Stop check](docs/CONTINUATION.md) for completion guidance and limits.
+See [session chaining](docs/CHAINING.md) to pass a saved handoff to a new session.
 
 MCP tool results use short text by default.
 The full result is available in `structuredContent`.

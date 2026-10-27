@@ -121,7 +121,8 @@ This procedure keeps the message data.
 The installer does not restart the running daemon.
 Stopping the message broker lets the next plugin call load the new broker code.
 If `broker-stop` returns `BROKER_OFFLINE`, no broker is running for that message directory.
-Close plugin sessions before broker shutdown because their exit hooks can start the broker again.
+Close plugin sessions before broker shutdown to prevent later plugin calls from starting it again.
+The SessionEnd hook does not start a broker.
 
 ## Change the source directory
 

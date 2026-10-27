@@ -7,6 +7,9 @@ The optional Stop check can request one extra continuation when work remains.
 These features do not guarantee task completion.
 They do not require a project task system.
 
+[Session chaining](CHAINING.md) uses this work state as the structured handoff for another session.
+Update the report when a work unit ends so its checkpoint includes decisions, remaining work, and evidence references.
+
 ## Save and recover work
 
 1. Call `get_work_state` to read your state and its revision.

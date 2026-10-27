@@ -49,6 +49,10 @@ function messageSummary(message) {
 export function summarizeResult(name, result) {
   let summary;
   switch (name) {
+    case 'link_chain':
+    case 'get_chain':
+    case 'unlink_chain':
+    case 'relink_chain': summary = `Chain: ${result.status}; ID: ${label(result.binding?.chain_id ?? result.tombstone?.chain_id ?? 'none', 80)}; checkpoint: ${result.binding?.latest_checkpoint_id ?? result.binding?.pinned_checkpoint_id ?? 'none'}.${result.tombstone ? ` Unlink record: ${result.tombstone.id}.` : ''} Saved reports are not user approval.`; break;
     case 'get_work_state':
     case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.${result.checklist_summary ? ` Checklist: ${result.checklist_summary.completed}/${result.checklist_summary.total} complete; ${result.checklist_summary.blocked} blocked. User decision required: ${result.checklist_summary.user_decision_required}.${result.checklist_summary.user_decision_required ? ' Ask the user for a decision; do not retry exhausted items.' : ''}` : ''}`; break;
     case 'list_agents':

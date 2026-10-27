@@ -4,6 +4,16 @@
 
 ## Unreleased
 
+- Add session chaining with exact UUID bindings and immutable checkpoints.
+- Reject `chain launch` with `CHAINING_LAUNCH_UNSUPPORTED`: the shared daemon cannot receive the child-only ticket.
+- Restore untrusted handoffs from existing work-state reports and bounded automatic records.
+- Keep the first source handoff pending until SessionStart outputs it, so earlier save hooks cannot hide it.
+- Add `chain` CLI commands and caller-owned link, status, unlink, and relink MCP tools.
+- Add read-only hook trust and chaining storage diagnostics.
+- Add the `PreCompact` hook event. Review and trust the new event in Codex `/hooks` after updating.
+  Existing hook command strings and array positions remain the same.
+- Keep SessionEnd from starting a broker and give checkpoint work a short time budget.
+
 - Add fixed work checklist items with verification methods and completion evidence.
 - Limit each item to one initial attempt and three retries.
 - Block exhausted items and reject overall completion while required items remain incomplete.

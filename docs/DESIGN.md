@@ -18,7 +18,25 @@ The broker also writes a local JSONL journal.
 It reads the running daemon socket with `codex app-server daemon version`.
 It connects to that socket through `codex app-server proxy`.
 The `ws` dependency handles WebSocket framing over the byte proxy.
-The plugin does not start a separate model executor.
+Message delivery does not start a separate model executor.
+The `chain launch` command is disabled because the shared daemon cannot receive its child-only ticket.
+
+## Session chaining
+
+[Session chaining](CHAINING.md) keeps a separate local store beside the message journal.
+Its MCP tools use the same caller metadata and live-session checks as message tools.
+Local CLI and hook processes use the same exclusive storage lock.
+Bindings use complete lowercase UUIDs and pin an immutable source checkpoint.
+The checkpoint copies the validated work-state report without changing its owner or continuation policy.
+Automatic transcript and Git records stay separate from that report.
+All restored content is untrusted data within the current user's scope.
+
+A launch ticket has one owner and a ten-minute first-use limit.
+The stored index contains only its hash.
+Ticket storage and claims are implemented, but the CLI transport remains unsupported.
+Unlink compares the expected chain and checkpoint before saving a tombstone.
+Relink requires that tombstone's exact ID.
+Optional chaining errors do not disable message delivery.
 
 ## Immediate delivery
 
