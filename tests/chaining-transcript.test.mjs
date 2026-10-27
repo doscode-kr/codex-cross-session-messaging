@@ -83,3 +83,11 @@ test('malformed deep checkpoint cannot remove the attachment marker', () => {
   assert.match(context, /Cross-session chaining hook attached/);
   assert.match(context, /"status":"storage_error"/);
 });
+
+test('oversized metadata refuses restoration within the context limit', () => {
+  const context = formatChainingContext({ status: 'restored', path: 'x'.repeat(9000), checkpoint: { id: 'test', structured: null, automatic: { messages: [], git: null } } });
+  assert.ok(Buffer.byteLength(context) <= 8000);
+  assert.match(context, /Cross-session chaining hook attached/);
+  const value = JSON.parse(context.split('<cross-session-handoff>\n')[1].split('\n</cross-session-handoff>')[0]);
+  assert.deepEqual(value, { status: 'rejected', reason: 'CHAINING_CONTEXT_TOO_LARGE' });
+});
