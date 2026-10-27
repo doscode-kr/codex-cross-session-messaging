@@ -1,6 +1,6 @@
 ---
 name: cross-session
-description: Find and message independent Codex CLI sessions on the same computer. Use for cross-session coordination, replies, one-shot idle notifications, or assigning the single leader role.
+description: Find and message independent Codex CLI sessions on the same computer. Use for coordination, replies, idle notifications, the single leader role, or local checkpoint handoffs between sessions.
 ---
 
 Use the `cross-session` MCP tools. Do not substitute Codex's same-tree subagent messaging tools.

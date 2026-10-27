@@ -172,6 +172,11 @@ The default directory is `$CODEX_HOME/cross-session`, or `~/.codex/cross-session
 Checkpoints copy the existing work-state report; they are immutable historical records.
 Writers use an exclusive lock and atomic publication.
 Concurrent writes either succeed without damage or return `CHAINING_BUSY`.
+The hook stops a slow checkpoint helper before its time budget ends.
+It releases only the matching lock of a helper whose exit it confirmed.
+An interrupted parent can leave a lock in place; `chain doctor` reports `lock_present`.
+That lock stops later writes until its ownership can be resolved.
+Do not infer a failed save from a timeout or repeat uncertain writes automatically.
 
 | Limit | Default |
 |---|---|
