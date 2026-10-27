@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Writable } from 'node:stream';
 import { temporary } from './helpers.mjs';
-import { runHook, runChainingHook } from '../plugins/cross-session/src/hooks.mjs';
+import { runHook, runChainingHook, writeHookOutput } from '../plugins/cross-session/src/hooks.mjs';
 
 const owner = '12345678-0000-4000-8000-000000000001';
 function fixture(t) {
@@ -12,6 +13,7 @@ function fixture(t) {
   return { session_id: owner, transcript_path: path };
 }
 const broker = { async hook() { return {}; } };
+const sink = () => new Writable({ write(chunk, encoding, callback) { callback(); } });
 
 test('each save hook saves only verified identity and SessionEnd skips git and cleanup', async t => {
   const input = fixture(t), saves = [];
@@ -97,4 +99,84 @@ test('save warnings and refusal codes are visible without private text', async t
   assert.match(lines[0], /checkpoint saved; retention/);
   assert.equal(lines[1], 'cross-session chaining: CHAINING_BUSY.');
   assert.ok(lines.every(line => !line.includes('PRIVATE_PATH')));
+});
+
+test('pending restore confirms the exact binding only after output completion', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart' }, confirmations = [];
+  const restored = { status: 'restored', binding: { id: 'binding-id', restore_pending: true },
+    checkpoint: { id: 'checkpoint-id', structured: { objective: 'SOURCE_MARKER' } }, path: '/checkpoint' };
+  const chaining = {
+    restore: async () => restored,
+    confirmRestore: async (id, args) => {
+      confirmations.push({ id, ...args });
+      restored.checkpoint.structured.objective = 'CHANGED_AFTER_PREPARATION';
+      return { status: 'confirmed' };
+    }
+  };
+  const result = await runHook(input, broker, {}, { chaining });
+  assert.equal(confirmations.length, 0);
+  let written;
+  const stream = new Writable({ write(chunk, encoding, callback) { written = callback; } });
+  const completion = writeHookOutput(result, stream, {}, { chaining });
+  assert.equal(confirmations.length, 0);
+  written();
+  assert.equal((await completion).status, 'confirmed');
+  assert.deepEqual(confirmations, [{ id: owner, expected_binding_id: 'binding-id', expected_checkpoint_id: 'checkpoint-id' }]);
+  assert.match(result.hookSpecificOutput.additionalContext, /SOURCE_MARKER/);
+  assert.doesNotMatch(result.hookSpecificOutput.additionalContext, /CHANGED_AFTER_PREPARATION/);
+});
+
+test('formatting refusal and failure leave the source restore pending', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart' };
+  const deep = {};
+  let entry = deep;
+  for (let index = 0; index < 5000; index++) { entry.child = {}; entry = entry.child; }
+  for (const malformed of [{ path: 'x'.repeat(9000) }, { checkpoint: { id: 'checkpoint-id', structured: deep } }]) {
+    const chaining = {
+      restore: async () => ({ status: 'restored', binding: { id: 'binding-id', restore_pending: true },
+        checkpoint: { id: 'checkpoint-id', structured: { objective: 'SOURCE_MARKER' } }, ...malformed }),
+      confirmRestore: () => assert.fail('unusable context must not consume the pending source')
+    };
+    const result = await runHook(input, broker, {}, { chaining });
+    assert.equal(await writeHookOutput(result, sink(), {}, { chaining }), null);
+    const context = result.hookSpecificOutput.additionalContext;
+    assert.match(context, /"status":"(?:rejected|storage_error)"/);
+    assert.doesNotMatch(context, /SOURCE_MARKER|"status":"restored"/);
+  }
+});
+
+test('post-output confirmation errors remain visible without an automatic retry', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart' };
+  for (const code of ['CHAINING_CONFLICT', 'CHAINING_BUSY', null]) {
+    let attempts = 0;
+    const chaining = {
+      restore: async () => ({ status: 'restored', binding: { id: 'binding-id', restore_pending: true },
+        checkpoint: { id: 'checkpoint-id', structured: { objective: 'SOURCE_MARKER' } } }),
+      confirmRestore: async () => {
+        attempts++;
+        if (code) throw Object.assign(Error('PRIVATE_CONFIRM_ERROR'), { code });
+        return { status: 'unexpected' };
+      }
+    };
+    const result = await runHook(input, broker, {}, { chaining });
+    const confirmation = await writeHookOutput(result, sink(), {}, { chaining });
+    assert.equal(attempts, 1);
+    assert.equal(confirmation.status, code ? 'storage_error' : 'uncertain');
+    assert.equal(confirmation.reason, code ?? 'CHAINING_UNAVAILABLE');
+    const context = result.hookSpecificOutput.additionalContext;
+    assert.match(context, /SOURCE_MARKER/);
+    assert.doesNotMatch(context, /PRIVATE_CONFIRM_ERROR/);
+  }
+});
+
+test('a failed output write does not confirm the prepared restore', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart' };
+  const chaining = {
+    restore: async () => ({ status: 'restored', binding: { id: 'binding-id', restore_pending: true },
+      checkpoint: { id: 'checkpoint-id', structured: { objective: 'SOURCE_MARKER' } } }),
+    confirmRestore: () => assert.fail('failed output must not consume the pending source')
+  };
+  const output = await runHook(input, broker, {}, { chaining });
+  const stream = new Writable({ write(chunk, encoding, callback) { callback(Object.assign(Error('write failed'), { code: 'EPIPE' })); } });
+  await assert.rejects(writeHookOutput(output, stream, {}, { chaining }), { code: 'EPIPE' });
 });
