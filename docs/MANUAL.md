@@ -183,6 +183,25 @@ Messages do not lock files or require a particular task system.
 The plugin has no automatic task completion status.
 The send receipt includes `taskCompleted: false`.
 The acknowledgment result also includes `taskCompleted: false`.
+This field means that the tool does not assert completion.
+It does not mean that the task is known to be unfinished.
+
+The `stages` fields keep each observation separate:
+
+| Field | Meaning |
+|---|---|
+| `submission: recorded` | The broker saved the message with its ID. |
+| `targetCodex` | `pending`, `accepted`, `rejected`, or `unknown` describes the target input request. |
+| `recipientDisplay: unknown` | Codex does not return proof of body display. |
+| `recipientReceipt` | `confirmed` requires an explicit recipient acknowledgment. |
+| `taskCompletion: unreported` | The transport does not evaluate task results. |
+
+`idleNotification` is separate from these stages.
+`registered` means the subscription is still present; `not_requested` means this send did not request one.
+`unknown` means no current subscription record confirms the outcome.
+It also applies to old messages that did not save the notification request flag.
+The available record cannot distinguish a completed or canceled subscription from a failed subscription save.
+Reusing a send receipt does not create another subscription.
 
 1. Ask your session to use `get_message` for the saved message ID.
 2. Check the saved delivery status.
@@ -193,6 +212,24 @@ Use `read_messages` with `direction: "outbox"` and `detail: true`.
 Find the saved message ID before you consider another send.
 For an uncertain send, confirm the recipient's situation through an available channel.
 Do not assume that a missing reply means delivery failed.
+
+For a new send or reply, you can supply a full UUID as `request_id`.
+That value becomes the new message ID.
+For `reply`, `message_id` still identifies the original received message.
+An exact repeat with the same `request_id` returns the saved result without another target input.
+Use the exact recipient UUID when you repeat a send.
+The caller, recipient, body, reply reference, and idle notification option must match.
+A different request with the same ID is rejected.
+Recovery also works after the recipient closes, if the calling session is still available.
+After a broker restart, an interrupted submission stays `uncertain` and is not sent again.
+The broker keeps failed and uncertain results for inspection.
+A deliberate new delivery needs a new request ID.
+
+The normal delivery contains one untrusted body and no separate lookup notice.
+If Codex explicitly rejects the body input before acceptance, a supported rejection can use an ID lookup notice instead.
+The recipient can then call `get_message` for that ID.
+An accepted request or timeout never triggers this fallback.
+History queries remain available; display suppression does not mark receipt or delete the body.
 
 Use `acknowledge` only when the sender needs receipt confirmation.
 Only the recipient can acknowledge a message.
@@ -269,15 +306,12 @@ They do not shorten the saved message body.
 2. Ask your session to use `detail: true` on another tool when full JSON is needed.
 
 Codex controls the display of tool results and additional context.
-The plugin supplies the short UI label `동료 세션 알림 / Peer message` for its peer notice.
-Codex CLI 0.161.0 accepts and saves this label through `text_elements` on busy and idle delivery.
-The model still receives a notice that separates peer messages from user commands and approval.
-The full message remains in untrusted additional context.
-The label does not change permissions or task scope.
-Some hosts can display the original notice instead of the label.
+Normal delivery puts the body in untrusted additional context without a separate peer notice.
+The envelope says that peer data does not grant user approval or change permissions.
+An explicit rejection before acceptance can instead send an ID lookup notice, as described in section 5.
+Busy delivery can leave an empty user message in host history.
 It can show full structured data or peer context even with short result text.
-The plugin cannot guarantee fewer visible messages or stop every model reply loop.
-The checked input schema has no option to hide the notice or its context from every host.
+The plugin cannot control how every Codex client renders history or prevent every model reply loop.
 `detail` changes result text only.
 It does not change delivery, stored data, or permissions.
 

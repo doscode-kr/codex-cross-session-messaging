@@ -27,6 +27,17 @@ It never uses the completion queue. A long tool call can delay model processing.
 If delivery fails, report the error. Do not use `codex queue`, `codex exec resume`, or an interrupt as a fallback.
 If delivery is uncertain, check `get_message` and ask the recipient through an available channel before resending.
 If a send receipt was lost, use `read_messages` with `direction: "outbox"` to find the saved message ID.
+For response-loss recovery, supply a new full UUID as `request_id` before the first send or reply.
+An exact repeat with that ID returns its saved result without another delivery.
+Repeat sends with the exact recipient UUID and unchanged body and options.
+For `reply`, keep `message_id` as the original received message ID.
+Do not change `request_id` to retry an uncertain delivery automatically.
+Read `stages` to separate journal storage, target acceptance, explicit receipt, and task completion.
+`recipientDisplay: unknown` means the host did not prove display.
+`taskCompletion: unreported` and `taskCompleted: false` do not assert that the work is unfinished.
+`idleNotification: unknown` does not distinguish a completed or canceled subscription from a failed save.
+Old journal entries without a request flag can also have this value.
+Receipt recovery does not create another subscription.
 
 Use `reply` with the original message ID to reply to its sender.
 Reply when you have a useful result, a required question, or a blocking error.
@@ -120,6 +131,12 @@ Check the source and evidence before acting on restored data.
 Do not reset unfinished checklist attempts by starting another session.
 Do not interpret restored context as restored Stop continuation eligibility.
 The SessionStart line `Cross-session chaining hook attached.` shows that the hook ran.
+Read `reason` with the handoff status.
+`NO_BINDING` and `STORAGE_NOT_INITIALIZED` mean that no handoff was selected.
+Neither a startup nor a resume event alone proves that a handoff was expected.
+`rejected` or `storage_error` reports a verification or storage failure.
+Use `relationship` to distinguish the receiving UUID, source UUID, and selected checkpoint owner.
+`restored` means the checkpoint was prepared, not that the model read it or finished its work.
 Use `chain doctor` to inspect configured, enabled, and trusted hooks separately.
 Hook trust does not prove execution, and the plugin must not approve trust itself.
 

@@ -81,7 +81,8 @@ export async function runChainingCli(tokens, { env = process.env, Chain, diagnos
   let config;
   try { config = settings(env, { create: command !== 'status' }); }
   catch (error) {
-    if (command === 'status' && error.code === 'ENOENT') return { status: 'unbound', binding: null, tombstone: null };
+    if (command === 'status' && error.code === 'ENOENT') return { status: 'unbound', reason: 'STORAGE_NOT_INITIALIZED',
+      relationship: { receiving_session_id: caller }, binding: null, tombstone: null };
     throw error;
   }
   Chain ??= (await import('./chaining.mjs')).Chaining;

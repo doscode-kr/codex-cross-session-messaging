@@ -2,6 +2,43 @@
 
 [한국어](VERIFICATION.ko.md)
 
+## Receipt and handoff recovery checks
+
+On 2026-10-28, Windows checks used Node.js 20.19.4 and isolated Codex hosts.
+The full suite with `CROSS_SESSION_REAL_CODEX_TEST=1` and `--test-concurrency=1` passed 371 of 372 tests.
+One runtime-purge test was skipped by the existing Windows path-alias safety check.
+An earlier parallel run exceeded the existing SessionEnd three-second process limit at 3.229 seconds.
+The focused rerun and the full serial run passed without increasing that limit.
+
+Codex 0.161.0 and 0.164.0 accepted an empty input array for idle delivery.
+Both versions accepted one empty text input for busy delivery.
+The delivered body appeared once in its first model input, without the old lookup notice.
+Later model requests can still include that body as conversation history.
+CLI terminal checks did not show an extra blank input row or lookup notice.
+The model inputs retained the receiving session's read-only sandbox and approval policy.
+These checks used a local mock model, not a test of model understanding.
+
+Repeating `clientUserMessageId` alone started another turn in both host versions.
+The broker now prevents another submission for a saved `request_id`.
+Unit checks cover concurrent repeats, lost responses, lost acknowledgment responses, restart, ID conflicts, and ambiguous recipients.
+They also cover the two-RPC limit and the notice fallback after an explicit rejection before acceptance.
+Timeouts and unknown outcomes did not cause a fallback or automatic resend.
+
+The final expanded `tests/real-codex.test.mjs` also passed independently after the full suite.
+It delivered between different project directories by exact UUID.
+It archived a target after message storage but before native submission, then recovered the same saved failure ID with zero input submissions.
+It discarded an adapter result after real host acceptance, then recovered `uncertain` with one input submission in total.
+An acknowledgment reply discarded at the MCP boundary did not change the first receipt timestamp on retry.
+A controlled duplicate-name adapter view returned `AMBIGUOUS_RECIPIENT`.
+Response loss was injected at API boundaries; the test did not drop a network frame.
+
+An isolated Codex 0.164.0 restart restored a new receiving session linked by exact UUID.
+Model input kept the prior request, one reported completed checklist item, one pending item, and the current authority boundary.
+The output included source, receiving, and checkpoint UUIDs.
+The source report did not become independent completion evidence or new user approval.
+The manual shared-daemon launch limit remains unchanged.
+These new checks do not add macOS or Node.js 22 evidence.
+
 ## Session chaining candidate checks
 
 The integrated code candidate `18d7385` passed an independent Windows check on 2026-10-27.

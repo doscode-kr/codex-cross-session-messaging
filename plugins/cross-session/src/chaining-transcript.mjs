@@ -93,11 +93,13 @@ export function formatChainingContext(result, maxBytes = 8000) {
 }
 export function prepareChainingContext(result, maxBytes = 8000) {
   try { return formatContext(result, maxBytes); }
-  catch { return { status: 'storage_error', context: `${chainingAttachment}\n${notice}\n<cross-session-handoff>\n{"status":"storage_error","reason":"CHAINING_UNAVAILABLE"}\n</cross-session-handoff>` }; }
+  catch { return { status: 'storage_error', reason: 'CHAINING_UNAVAILABLE', context: `${chainingAttachment}\n${notice}\n<cross-session-handoff>\n{"status":"storage_error","reason":"CHAINING_UNAVAILABLE"}\n</cross-session-handoff>` }; }
 }
 function formatContext(result, maxBytes) {
   const status = result?.status ?? 'storage_error';
   const data = { status, ...(result?.reason ? { reason: result.reason } : {}), ...(result?.path ? { original_path: result.path } : {}),
+    ...(result?.lifecycle ? { lifecycle: result.lifecycle } : {}),
+    ...(result?.relationship ? { relationship: structuredClone(result.relationship) } : {}),
     ...(result?.ticket_status ? { ticket_status: result.ticket_status } : {}),
     ...(result?.checkpoint ? { checkpoint: structuredClone(result.checkpoint) } : {}) };
   if (data.checkpoint) data.handoff = data.checkpoint.structured ? 'Structured handoff: prior session model report.' : 'No structured handoff — automatic records only.';
@@ -122,6 +124,6 @@ function formatContext(result, maxBytes) {
     data.checkpoint = { id: data.checkpoint.id, session_id: data.checkpoint.session_id, chain_id: data.checkpoint.chain_id };
     data.handoff = 'Handoff text exceeds the context limit. Read the original path if needed.';
   }
-  if (tooLarge()) return { status: 'rejected', context: `${chainingAttachment}\n${notice}\n<cross-session-handoff>\n{"status":"rejected","reason":"CHAINING_CONTEXT_TOO_LARGE"}\n</cross-session-handoff>` };
-  return { status, context: render() };
+  if (tooLarge()) return { status: 'rejected', reason: 'CHAINING_CONTEXT_TOO_LARGE', context: `${chainingAttachment}\n${notice}\n<cross-session-handoff>\n{"status":"rejected","reason":"CHAINING_CONTEXT_TOO_LARGE"}\n</cross-session-handoff>` };
+  return { status, reason: data.reason, context: render() };
 }
