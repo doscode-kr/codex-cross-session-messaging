@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, existsSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -11,7 +11,6 @@ import { handleMcp } from '../plugins/cross-session/src/mcp.mjs';
 const run = promisify(execFile);
 const A = '11111111-0000-4000-8000-000000000001';
 const B = '11111111-0000-4000-8000-000000000002';
-const C = '22222222-0000-4000-8000-000000000001';
 function temporary(t) {
   const base = realpathSync(tmpdir());
   const root = realpathSync(mkdtempSync(join(base, 'chaining-cli-')));
@@ -24,61 +23,51 @@ function temporary(t) {
   return root;
 }
 
-test('chain CLI validates options and UUIDs before it creates state', async t => {
+test('chain CLI exposes only session-local status and diagnostics', async t => {
   const root = temporary(t), home = join(root, 'missing');
   const env = { CROSS_SESSION_HOME: home, CODEX_THREAD_ID: A };
   for (const args of [
-    ['link', '--chain-id', '../bad'], ['link', '--chain-id', 'work', '--source-session-id', '11111111'],
-    ['link', '--chain-id', 'work', '--session', '11111111'], ['status', '--target', B],
-    ['unlink', '--expected-chain-id', 'work', '--expected-checkpoint-id', 'bad'],
-    ['relink', '--chain-id', 'work', '--tombstone-id', 'bad'], ['status', '--', 'ignored'],
-    ['doctor', '--session', A], ['launch', '--session', A], ['launch', '--chain-id', 'work'],
-    ['status', '--session', 'AAAAAAAA-0000-4000-8000-000000000001'],
-    ...[['resume'], ['-c', 'model="fixture"', 'resume', '--help'], ['--profile', 'fixture', 'fork'], ['--model=fixture', 'exec']]
-      .map(child => ['launch', '--chain-id', 'work', '--source-session-id', A, '--', ...child])
+    ['status', '--target', B], ['status', '--', 'ignored'], ['doctor', '--session', A],
+    ['doctor', '--unknown', 'value'], ['status', '--session', '11111111']
   ]) await assert.rejects(runChainingCli(args, { env }), { code: 'INVALID_ARGUMENT' });
+  assert.deepEqual(await runChainingCli(['status'], { env }), { mode: 'session_local', owner: A, status: 'absent', reason: 'NO_SESSION', session: null });
   assert.equal(existsSync(home), false);
-  assert.deepEqual(await runChainingCli(['status'], { env }), { status: 'unbound', reason: 'STORAGE_NOT_INITIALIZED',
-    relationship: { receiving_session_id: A }, binding: null, tombstone: null });
-  assert.equal(existsSync(home), false);
+  const help = (await runChainingCli(['--help'], { env })).help;
+  assert.match(help, /Session-local continuity/);
+  assert.match(help, /chain status/);
+  assert.match(help, /chain doctor/);
+  assert.doesNotMatch(help, /chain (?:link|unlink|relink|launch)/);
 });
 
-test('chain CLI uses exact caller identity and compare values for unlink and relink', async t => {
-  const root = temporary(t), calls = [];
-  class Chain {
-    constructor(path) { assert.equal(path, root); }
-    async bind(...args) { calls.push(['bind', ...args]); return { status: 'bound_no_notes' }; }
-    async unlink(...args) { calls.push(['unlink', ...args]); return { status: 'unlinked' }; }
-    async relink(...args) { calls.push(['relink', ...args]); return { status: 'bound' }; }
-  }
-  const options = { env: { CROSS_SESSION_HOME: root, CODEX_THREAD_ID: A }, Chain };
-  await runChainingCli(['link', '--chain-id', 'work', '--source-session-id', B], options);
-  await runChainingCli(['unlink', '--expected-chain-id', 'work', '--expected-checkpoint-id', 'none'], options);
-  await runChainingCli(['relink', '--session', B, '--chain-id', 'work', '--tombstone-id', C, '--detail'], options);
-  assert.deepEqual(calls, [
-    ['bind', A, { chain_id: 'work', source_session_id: B }],
-    ['unlink', A, { expected_chain_id: 'work', expected_checkpoint_id: null }],
-    ['relink', B, { chain_id: 'work', tombstone_id: C }]
-  ]);
-});
-
-test('launch fails before storage access for every process mode', async t => {
+test('legacy chain commands fail before storage or process access', async t => {
   const root = temporary(t), home = join(root, 'missing');
   const env = { CROSS_SESSION_HOME: home, CODEX_THREAD_ID: A, CROSS_SESSION_CHAIN_TICKET: 'private-fixture' };
-  class Chain { constructor() { assert.fail('Unsupported launch must not access storage'); } }
-  for (const extra of [[], ['--codex-js', join(root, 'codex.js')], ['--', '--no-daemon'], ['--', '-c', 'model="fixture"']]) {
-    await assert.rejects(runChainingCli(['launch', '--chain-id', 'work', '--source-session-id', A, ...extra], { env, Chain }), error => {
-      assert.equal(error.code, 'CHAINING_LAUNCH_UNSUPPORTED');
+  class Chain { constructor() { assert.fail('Legacy commands must not access continuity storage.'); } }
+  for (const command of ['link', 'unlink', 'relink', 'launch']) {
+    await assert.rejects(runChainingCli([command, '--unknown', 'value'], { env, Chain }), error => {
+      assert.equal(error.code, 'CHAINING_SESSION_LOCAL_ONLY');
       assert.equal(error.message.includes('private-fixture'), false);
       return true;
     });
   }
   assert.equal(existsSync(home), false);
   assert.equal(env.CROSS_SESSION_CHAIN_TICKET, 'private-fixture');
-  assert.deepEqual(readdirSync(root), []);
 });
 
-test('diagnosis combines host trust and storage use without creating missing state', async t => {
+test('chain status uses exact caller identity and read-only status options', async t => {
+  const root = temporary(t), calls = [];
+  class Chain {
+    constructor(path) { assert.equal(path, root); }
+    async status(...args) { calls.push(args); return { status: 'active', reason: 'SESSION_ACTIVE', session: { owner: A } }; }
+  }
+  const result = await runChainingCli(['status', '--session', A, '--detail'], { env: { CROSS_SESSION_HOME: root }, Chain });
+  assert.equal(result.status, 'active');
+  assert.equal(result.mode, 'session_local');
+  assert.equal(result.owner, A);
+  assert.deepEqual(calls, [[A, {}]]);
+});
+
+test('diagnosis combines host trust and session-local storage use without creating missing state', async t => {
   const root = temporary(t), home = join(root, 'missing');
   const result = await runChainingCli(['doctor', '--cwd', root], {
     env: { CROSS_SESSION_HOME: home }, diagnose: async ({ cwd }) => { assert.equal(cwd, root); return { status: 'needs_attention' }; }
@@ -87,25 +76,28 @@ test('diagnosis combines host trust and storage use without creating missing sta
   assert.equal(existsSync(home), false);
 });
 
-test('MCP chain tools use call metadata and reject caller identity arguments', async () => {
-  const params = { name: 'link_chain', arguments: { chain_id: 'work', source_session_id: B }, _meta: { sessionId: A } };
-  const result = await handleMcp({ method: 'tools/call', params }, { async call(name, args, owner) {
-    assert.equal(owner, A); assert.equal(name, 'link_chain'); assert.equal(args.source_session_id, B);
-    return { status: 'bound', binding: { chain_id: 'work', latest_checkpoint_id: null, pinned_checkpoint_id: C } };
+test('MCP status uses call metadata and legacy tools fail before broker access', async () => {
+  const data = { mode: 'session_local', owner: A, status: 'active', reason: 'SESSION_ACTIVE', session: { owner: A, latest_checkpoint_id: null } };
+  const result = await handleMcp({ method: 'tools/call', params: { name: 'get_chain', arguments: {}, _meta: { sessionId: A } } }, { async call(name, args, owner) {
+    assert.equal(owner, A); assert.equal(name, 'get_chain'); assert.deepEqual(args, {});
+    return data;
   } });
   assert.equal(result.isError, false);
-  assert.match(result.content[0].text, /not user approval/);
-  for (const name of ['link_chain', 'get_chain', 'unlink_chain', 'relink_chain']) {
-    const bad = await handleMcp({ method: 'tools/call', params: { name, arguments: { session_id: B } } }, { call() { assert.fail('Unexpected broker access'); } });
-    assert.equal(bad.isError, true); assert.equal(bad.structuredContent.code, 'INVALID_ARGUMENT');
+  assert.match(result.content[0].text, /session_local: active/);
+  assert.match(result.content[0].text, /not user approval or proof of task completion/);
+  for (const name of ['link_chain', 'unlink_chain', 'relink_chain']) {
+    const bad = await handleMcp({ method: 'tools/call', params: { name, arguments: { session_id: B }, _meta: { sessionId: A } } }, { call() { assert.fail('Unexpected broker access'); } });
+    assert.equal(bad.isError, true);
+    assert.equal(bad.structuredContent.code, 'CHAINING_SESSION_LOCAL_ONLY');
   }
 });
 
-test('actual CLI displays chain help and reports absent bindings without a broker', async t => {
+test('actual CLI help omits legacy usage and absent status stays read-only', async t => {
   const root = temporary(t), env = { ...process.env, CROSS_SESSION_HOME: join(root, 'missing'), CODEX_THREAD_ID: A };
   const help = await run(process.execPath, ['plugins/cross-session/src/cli.mjs', 'chain', '--help'], { env, windowsHide: true });
-  assert.match(help.stdout, /chain launch/);
+  assert.match(help.stdout, /Session-local continuity/);
+  assert.doesNotMatch(help.stdout, /chain (?:link|unlink|relink|launch)/);
   const status = await run(process.execPath, ['plugins/cross-session/src/cli.mjs', 'chain', 'status'], { env, windowsHide: true });
-  assert.equal(JSON.parse(status.stdout).status, 'unbound');
+  assert.deepEqual(JSON.parse(status.stdout), { mode: 'session_local', owner: A, status: 'absent', reason: 'NO_SESSION', session: null });
   assert.equal(existsSync(env.CROSS_SESSION_HOME), false);
 });

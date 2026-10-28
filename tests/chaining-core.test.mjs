@@ -1,273 +1,212 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Chaining } from '../plugins/cross-session/src/chaining.mjs';
+import { SessionContinuity } from '../plugins/cross-session/src/chaining.mjs';
+import { resolveSessionProject } from '../plugins/cross-session/src/session-project.mjs';
 import { WorkState } from '../plugins/cross-session/src/work-state.mjs';
 import { temporary } from './helpers.mjs';
 
-const a = '01234567-0000-4000-8000-000000000001', b = '01234567-0000-4000-8000-000000000002';
-const c = '01234567-0000-4000-8000-000000000003';
-const automatic = text => ({ messages: [{ role: 'user', text }], git: null });
-const save = (chaining, owner, text = 'Saved text', event = 'Stop') => chaining.checkpoint(owner, { event, automatic: automatic(text) });
-async function confirm(chaining, owner) {
-  const restored = await chaining.restore(owner);
-  return chaining.confirmRestore(owner, { expected_binding_id: restored.binding.id, expected_checkpoint_id: restored.checkpoint.id });
+const automatic = (at = '2026-10-28T08:00:00.000Z', text = 'Keep this work') => ({
+  original_request: { role: 'user', text: 'Build the requested change', provenance: 'observed_user_record', observed_at: at },
+  original_request_reason: 'OBSERVED',
+  recent_messages: [
+    { role: 'user', text, provenance: 'observed_transcript_record', observed_at: at },
+    { role: 'assistant', text: 'Work remains', provenance: 'observed_transcript_record', observed_at: at }
+  ],
+  git: null
+});
+const checklist = [{ title: 'Finish the work', expected_result: 'The change works', verification_method: 'Run the focused test' }];
+
+function clock(...values) {
+  let index = 0;
+  return () => values[Math.min(index++, values.length - 1)];
 }
-function state(work, owner, objective) {
-  work.set(owner, { action: 'start', expected_revision: 0, objective, scope: 'Current user request', completion_criteria: 'Tests pass', next_action: 'Run tests',
-    checklist: [{ title: 'Tests', expected_result: 'Tests pass', verification_method: 'Run tests' }] });
-}
 
-test('full UUID source selection and immutable snapshots preserve the selected owner', async t => {
-  const root = temporary(t), chaining = new Chaining(root), work = new WorkState(root);
-  state(work, a, 'Owner A marker'); state(work, b, 'Owner B marker');
-  await chaining.bind(a, { chain_id: 'work' }); await chaining.bind(b, { chain_id: 'work' });
-  const first = await save(chaining, a, 'A text'); await save(chaining, b, 'B text');
-  const original = readFileSync(first.path);
-  await chaining.bind(c, { chain_id: 'work', source_session_id: a });
-  work.set(a, { action: 'update', expected_revision: 1, next_action: 'Changed after binding' });
-  await save(chaining, a, 'A later text');
-  const restored = await chaining.restore(c);
-  assert.equal(restored.checkpoint.id, first.checkpoint_id);
-  assert.equal(restored.checkpoint.structured.objective, 'Owner A marker');
-  assert.equal(restored.checkpoint.structured.next_action, 'Run tests');
-  assert.equal(restored.checkpoint.automatic.messages[0].text, 'A text');
-  assert.deepEqual(readFileSync(first.path), original);
-  assert.equal((await chaining.restore(randomUUID())).status, 'unbound');
-  for (const id of ['01234567', a.slice(0, -1), '../state']) await assert.rejects(chaining.status(id), { code: 'CHAINING_INVALID_ARGUMENT' });
+test('a session creates, checkpoints, and restores only its own project state', async t => {
+  const root = temporary(t), owner = randomUUID(), project = join(root, 'project');
+  mkdirSync(project);
+  const continuity = new SessionContinuity(root, { now: () => Date.parse('2026-10-28T08:00:00.000Z') });
+  const created = await continuity.ensureOwnSession(owner, { project });
+  assert.equal(created.status, 'created');
+  assert.equal(created.session.owner, owner);
+  assert.equal(created.session.project, project);
+  assert.equal((await continuity.status(owner, {})).status, 'active');
+
+  const saved = await continuity.checkpoint(owner, { project, event: 'PreCompact', automatic: automatic() });
+  assert.equal(saved.status, 'saved');
+  const restored = await continuity.restore(owner, { project });
+  assert.equal(restored.status, 'restored');
+  assert.equal(restored.relationship.receiving_session_id, owner);
+  assert.equal(restored.checkpoint.owner, owner);
+  assert.equal(restored.checkpoint.project, project);
+  assert.equal(restored.checkpoint.original_request.text, 'Build the requested change');
 });
 
-test('reads do not create chaining storage and an unbound session does not save', async t => {
-  const root = temporary(t), chaining = new Chaining(root);
-  assert.equal((await chaining.status(a)).status, 'unbound');
-  assert.equal((await chaining.restore(a)).checkpoint, null);
-  assert.equal((await chaining.usage()).bytes, 0);
-  assert.deepEqual(readdirSync(root), []);
-  assert.equal((await save(chaining, a)).status, 'unbound');
-  assert.equal(readdirSync(chaining.store.checkpoints).length, 0);
+test('different session UUIDs never select each other checkpoints', async t => {
+  const root = temporary(t), project = join(root, 'project'), first = randomUUID(), second = randomUUID();
+  mkdirSync(project);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(first, { project });
+  await continuity.ensureOwnSession(second, { project });
+  const firstSaved = await continuity.checkpoint(first, { project, event: 'Stop', automatic: automatic(undefined, 'first') });
+  assert.equal((await continuity.restore(second, { project })).reason, 'NO_CHECKPOINT');
+  const secondSaved = await continuity.checkpoint(second, { project, event: 'Stop', automatic: automatic(undefined, 'second') });
+  assert.equal((await continuity.restore(first, { project })).checkpoint.id, firstSaved.checkpoint_id);
+  assert.equal((await continuity.restore(second, { project })).checkpoint.id, secondSaved.checkpoint_id);
 });
 
-test('handoff reasons and provenance distinguish the pinned source from current progress', async t => {
-  const chaining = new Chaining(temporary(t));
-  assert.equal((await chaining.status(a)).reason, 'NO_BINDING');
-  assert.equal((await chaining.bind(a, { chain_id: 'work' })).reason, 'NO_CHECKPOINT');
-  const source = await save(chaining, a);
-  const linked = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  const first = await chaining.restore(b);
-  assert.equal(first.reason, 'CHECKPOINT_LOADED');
-  assert.deepEqual(first.relationship, { receiving_session_id: b, source_session_id: a,
-    binding_id: linked.binding.id, chain_id: 'work', checkpoint_id: source.checkpoint_id,
-    checkpoint_session_id: a, selected_from: 'pinned_source' });
-  await confirm(chaining, b);
-  const own = await save(chaining, b);
-  const resumed = await chaining.restore(b);
-  assert.equal(resumed.relationship.source_session_id, a);
-  assert.equal(resumed.relationship.checkpoint_session_id, b);
-  assert.equal(resumed.relationship.checkpoint_id, own.checkpoint_id);
-  assert.equal(resumed.relationship.selected_from, 'own_latest');
-  const unlinked = await chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: own.checkpoint_id });
-  assert.equal(unlinked.reason, 'EXPLICITLY_UNLINKED');
+test('one UUID cannot change projects and a rejected request does not change state', async t => {
+  const root = temporary(t), first = join(root, 'first'), second = join(root, 'second'), owner = randomUUID();
+  mkdirSync(first); mkdirSync(second);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(owner, { project: first });
+  const before = readFileSync(continuity.store.path);
+  await assert.rejects(continuity.ensureOwnSession(owner, { project: second }), { code: 'CHAINING_PROJECT_MISMATCH' });
+  await assert.rejects(continuity.restore(owner, { project: second }), { code: 'CHAINING_PROJECT_MISMATCH' });
+  await assert.rejects(continuity.checkpoint(owner, { project: second, event: 'Stop', automatic: automatic() }), { code: 'CHAINING_PROJECT_MISMATCH' });
+  assert.deepEqual(readFileSync(continuity.store.path), before);
 });
 
-test('source links require a saved checkpoint and cannot move a live binding', async t => {
-  const chaining = new Chaining(temporary(t));
-  await chaining.bind(a, { chain_id: 'one' });
-  await assert.rejects(chaining.bind(b, { chain_id: 'one', source_session_id: a }), { code: 'CHAINING_NO_CHECKPOINT' });
-  await assert.rejects(chaining.createTicket({ chain_id: 'one', source_session_id: a }), { code: 'CHAINING_NO_CHECKPOINT' });
-  await assert.rejects(chaining.bind(a, { chain_id: 'two' }), { code: 'CHAINING_ALREADY_BOUND' });
-  await save(chaining, a);
-  await assert.rejects(chaining.bind(b, { chain_id: 'two', source_session_id: a }), { code: 'CHAINING_SOURCE_MISMATCH' });
-  assert.equal((await chaining.status(b)).status, 'unbound');
+test('status without a project is read-only and cannot restore a checkpoint', async t => {
+  const root = temporary(t), project = join(root, 'project'), owner = randomUUID();
+  mkdirSync(project);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(owner, { project });
+  await continuity.checkpoint(owner, { project, event: 'Stop', automatic: automatic() });
+  const before = readFileSync(continuity.store.path);
+  const status = await continuity.status(owner, {});
+  assert.equal(status.session.latest_checkpoint_id !== null, true);
+  assert.equal(Object.hasOwn(status, 'checkpoint'), false);
+  assert.deepEqual(readFileSync(continuity.store.path), before);
+  await assert.rejects(continuity.restore(owner, {}), { code: 'CHAINING_INVALID_ARGUMENT' });
 });
 
-test('tickets pin creation time snapshots, consume once, and allow owner resume after expiry', async t => {
-  let time = Date.parse('2026-01-01T00:00:00.000Z');
-  const root = temporary(t), chaining = new Chaining(root, { now: () => time });
-  await chaining.bind(a, { chain_id: 'work' }); const first = await save(chaining, a, 'First');
-  const ticket = await chaining.createTicket({ chain_id: 'work', source_session_id: a });
-  assert.match(ticket.ticket, /^[a-f0-9]{64}$/u);
-  assert.equal(readFileSync(chaining.store.path, 'utf8').includes(ticket.ticket), false);
-  assert.equal(readFileSync(chaining.store.path, 'utf8').includes(createHash('sha256').update(ticket.ticket).digest('hex')), true);
-  await save(chaining, a, 'Second');
-  assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'claimed');
-  assert.equal((await chaining.status(b)).binding.restore_pending, true);
-  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
-  assert.equal((await chaining.restore(b)).checkpoint.id, first.checkpoint_id);
-  assert.equal((await chaining.claimTicket(c, ticket.ticket)).status, 'consumed');
-  assert.equal((await chaining.restore(c)).status, 'unbound');
-  time += 3600000;
-  assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'owner_resume');
-  await confirm(chaining, b);
-  const own = await save(chaining, b, 'Owner progress', 'PreCompact');
-  assert.equal((await chaining.restore(b)).checkpoint.id, own.checkpoint_id);
-  assert.equal((await chaining.status(b)).binding.pinned_checkpoint_id, first.checkpoint_id);
-  const reopened = new Chaining(root, { now: () => time });
-  assert.equal((await reopened.claimTicket(b, ticket.ticket)).status, 'owner_resume');
+test('reset omits old and undated transcript records and old structured work', async t => {
+  const root = temporary(t), project = join(root, 'project'), owner = randomUUID();
+  mkdirSync(project);
+  const before = Date.parse('2026-10-28T08:00:00.000Z');
+  const resetAt = Date.parse('2026-10-28T08:01:00.000Z');
+  const after = '2026-10-28T08:02:00.000Z';
+  new WorkState(root, { enabled: false, now: () => before }).set(owner, {
+    action: 'start', expected_revision: 0, objective: 'Old objective', scope: 'Old scope',
+    completion_criteria: 'Old result', next_action: 'Old next action', checklist
+  });
+  const continuity = new SessionContinuity(root, { now: clock(before, resetAt, Date.parse(after)) });
+  await continuity.ensureOwnSession(owner, { project });
+  const reset = await continuity.reset(owner, { project });
+  assert.equal(reset.session.reset_at, '2026-10-28T08:01:00.000Z');
+  new WorkState(root, { enabled: false, now: () => Date.parse(after) }).set(owner, {
+    action: 'update', expected_revision: 1, progress_evidence: 'OLD_OBJECTIVE_BEFORE_CLEAR was updated after clear'
+  });
+  const saved = await continuity.checkpoint(owner, {
+    project, event: 'Stop', automatic: {
+      original_request: { role: 'user', text: 'Old request', provenance: 'observed_user_record', observed_at: '2026-10-28T07:59:00.000Z' },
+      original_request_reason: 'OBSERVED',
+      recent_messages: [
+        { role: 'user', text: 'Old message', provenance: 'observed_transcript_record', observed_at: '2026-10-28T08:00:00.000Z' },
+        { role: 'assistant', text: 'No timestamp', provenance: 'observed_transcript_record' },
+        { role: 'user', text: 'New message', provenance: 'observed_transcript_record', observed_at: after }
+      ],
+      git: null
+    }
+  });
+  const checkpoint = (await continuity.restore(owner, { project })).checkpoint;
+  assert.equal(saved.status, 'saved');
+  assert.equal(checkpoint.original_request, null);
+  assert.equal(checkpoint.original_request_reason, 'RESET_BOUNDARY');
+  assert.deepEqual(checkpoint.recent_messages.map(value => value.text), ['New message']);
+  assert.equal(checkpoint.structured, null);
 });
 
-test('ticket rejection distinguishes missing, malformed, expired, and mismatched owners', async t => {
-  let time = Date.parse('2026-01-01T00:00:00.000Z');
-  const chaining = new Chaining(temporary(t), { now: () => time });
-  await chaining.bind(a, { chain_id: 'work' }); await save(chaining, a);
-  const expired = await chaining.createTicket({ chain_id: 'work', source_session_id: a });
-  time += 600000;
-  assert.equal((await chaining.claimTicket(b, expired.ticket)).status, 'expired');
-  assert.equal((await chaining.claimTicket(b, undefined)).status, 'missing_ticket');
-  assert.equal((await chaining.claimTicket(b, 'bad')).status, 'invalid_ticket');
-  assert.equal((await chaining.claimTicket(b, 'a'.repeat(64))).status, 'missing_ticket');
-  const mismatch = await chaining.createTicket({ chain_id: 'work', source_session_id: a });
-  assert.equal((await chaining.claimTicket(a, mismatch.ticket)).status, 'mismatch');
-  await chaining.bind(b, { chain_id: 'other' });
-  assert.equal((await chaining.claimTicket(b, mismatch.ticket)).status, 'mismatch');
+test('structured work created after reset is stored only for the same UUID', async t => {
+  const root = temporary(t), project = join(root, 'project'), owner = randomUUID(), other = randomUUID();
+  mkdirSync(project);
+  const resetAt = Date.parse('2026-10-28T08:00:00.000Z'), workAt = Date.parse('2026-10-28T08:01:00.000Z');
+  const continuity = new SessionContinuity(root, { now: () => resetAt });
+  await continuity.ensureOwnSession(owner, { project });
+  await continuity.reset(owner, { project });
+  const work = new WorkState(root, { enabled: false, now: () => workAt });
+  work.set(other, { action: 'start', expected_revision: 0, objective: 'Other', scope: 'Other', completion_criteria: 'Other', next_action: 'Other', checklist });
+  work.set(owner, { action: 'start', expected_revision: 0, objective: 'Current', scope: 'Current', completion_criteria: 'Current', next_action: 'Current', checklist });
+  await continuity.checkpoint(owner, { project, event: 'Stop', automatic: automatic('2026-10-28T08:02:00.000Z') });
+  const restored = await continuity.restore(owner, { project });
+  assert.equal(restored.checkpoint.structured.owner, owner);
+  assert.equal(restored.checkpoint.structured.objective, 'Current');
 });
 
-test('unlink CAS and tombstones stop automatic rebind, save, and old owner tickets', async t => {
-  const chaining = new Chaining(temporary(t));
-  await chaining.bind(a, { chain_id: 'work' }); const source = await save(chaining, a);
-  const ticket = await chaining.createTicket({ chain_id: 'work', source_session_id: a });
-  await chaining.claimTicket(b, ticket.ticket);
-  await assert.rejects(chaining.unlink(b, { expected_chain_id: 'wrong', expected_checkpoint_id: source.checkpoint_id }), { code: 'CHAINING_CONFLICT' });
-  await assert.rejects(chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: null }), { code: 'CHAINING_CONFLICT' });
-  const result = await chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: source.checkpoint_id });
-  assert.equal(result.status, 'unlinked');
-  assert.equal((await save(chaining, b)).status, 'unlinked');
-  assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'mismatch');
-  await assert.rejects(chaining.bind(b, { chain_id: 'work' }), { code: 'CHAINING_UNLINKED' });
-  await assert.rejects(chaining.relink(b, { tombstone_id: randomUUID(), chain_id: 'work' }), { code: 'CHAINING_CONFLICT' });
-  const relinked = await chaining.relink(b, { tombstone_id: result.tombstone.id, chain_id: 'work', source_session_id: a });
-  assert.equal(relinked.status, 'bound');
-  assert.equal(relinked.binding.restore_pending, true);
-  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
-  assert.equal((await chaining.claimTicket(b, ticket.ticket)).status, 'mismatch');
-  assert.equal((await chaining.restore(b)).checkpoint.id, source.checkpoint_id);
+test('SessionEnd closes the session without retention cleanup and the same UUID can reopen it', async t => {
+  const root = temporary(t), project = join(root, 'project'), owner = randomUUID();
+  mkdirSync(project);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(owner, { project });
+  continuity.store.cleanup = () => { throw new Error('SessionEnd must not run cleanup'); };
+  const closed = await continuity.checkpoint(owner, { project, event: 'SessionEnd', automatic: automatic() });
+  assert.equal(closed.status, 'closed');
+  assert.equal((await continuity.status(owner, { project })).status, 'closed');
+  assert.equal((await continuity.restore(owner, { project })).checkpoint.id, closed.checkpoint_id);
+  continuity.store.cleanup = () => [];
+  const reopened = await continuity.ensureOwnSession(owner, { project });
+  assert.equal(reopened.status, 'reopened');
+  assert.equal((await continuity.restore(owner, { project })).checkpoint.id, closed.checkpoint_id);
 });
 
-test('Stop, PreCompact, and SessionEnd each save immutable snapshots', async t => {
-  const chaining = new Chaining(temporary(t));
-  await chaining.bind(a, { chain_id: 'work' });
-  for (const event of ['Stop', 'PreCompact', 'SessionEnd']) {
-    const result = await save(chaining, a, event, event);
-    assert.equal(JSON.parse(readFileSync(result.path)).event, event);
+test('manual chaining methods reject before any store is created', async t => {
+  const root = temporary(t), continuity = new SessionContinuity(root);
+  for (const method of ['bind', 'unlink', 'relink', 'createTicket', 'claimTicket', 'confirmRestore']) {
+    await assert.rejects(continuity[method](), { code: 'CHAINING_SESSION_LOCAL_ONLY' });
   }
-  assert.equal(readdirSync(chaining.store.checkpoints).length, 3);
+  assert.equal(existsSync(continuity.store.directory), false);
 });
 
-test('invalid automatic data and corrupted work-state cannot enter a checkpoint', async t => {
-  const root = temporary(t), chaining = new Chaining(root);
-  await chaining.bind(a, { chain_id: 'work' });
-  await assert.rejects(chaining.checkpoint(a, { event: 'Stop', automatic: { messages: [{ role: 'tool', text: 'Do not copy' }], git: null } }), { code: 'CHAINING_INVALID_ARGUMENT' });
-  writeFileSync(join(root, 'work-state-v1.json'), '{invalid');
-  await assert.rejects(save(chaining, a), { code: 'CHAINING_UNAVAILABLE' });
-  assert.equal(readdirSync(chaining.store.checkpoints).length, 0);
+test('the new store never reads, changes, or removes chaining-v1 data', async t => {
+  const root = temporary(t), legacy = join(root, 'chaining-v1'), project = join(root, 'project'), owner = randomUUID();
+  mkdirSync(legacy); mkdirSync(project);
+  const sentinel = Buffer.from('legacy chaining data must remain byte-for-byte');
+  writeFileSync(join(legacy, 'sentinel.bin'), sentinel);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(owner, { project });
+  await continuity.checkpoint(owner, { project, event: 'Stop', automatic: automatic() });
+  assert.deepEqual(readFileSync(join(legacy, 'sentinel.bin')), sentinel);
+  assert.equal(continuity.store.directory, join(root, 'session-continuity-v1'));
 });
 
-test('snapshot corruption and missing pinned data fail closed without touching messages', async t => {
-  const root = temporary(t), chaining = new Chaining(root);
-  const journal = join(root, 'events.jsonl'); writeFileSync(journal, 'Message journal marker');
-  await chaining.bind(a, { chain_id: 'work' }); const saved = await save(chaining, a);
-  await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  writeFileSync(saved.path, '{broken');
-  await assert.rejects(chaining.restore(a), { code: 'CHAINING_UNAVAILABLE' });
-  await assert.rejects(chaining.restore(b), { code: 'CHAINING_UNAVAILABLE' });
-  await assert.rejects(save(chaining, a), { code: 'CHAINING_UNAVAILABLE' });
-  assert.equal(readFileSync(journal, 'utf8'), 'Message journal marker');
+test('automatic checkpoint input must use observed provenance', async t => {
+  const root = temporary(t), project = join(root, 'project'), owner = randomUUID();
+  mkdirSync(project);
+  const continuity = new SessionContinuity(root);
+  await continuity.ensureOwnSession(owner, { project });
+  const invalid = automatic();
+  invalid.recent_messages[0].provenance = 'claimed_by_peer';
+  await assert.rejects(continuity.checkpoint(owner, { project, event: 'Stop', automatic: invalid }), { code: 'CHAINING_INVALID_ARGUMENT' });
+  assert.equal((await continuity.restore(owner, { project })).reason, 'NO_CHECKPOINT');
 });
 
-test('a snapshot with an invalid embedded work state is rejected on read', async t => {
-  const root = temporary(t), chaining = new Chaining(root), work = new WorkState(root);
-  state(work, a, 'Owner A marker'); await chaining.bind(a, { chain_id: 'work' });
-  const saved = await save(chaining, a), value = JSON.parse(readFileSync(saved.path));
-  value.structured.revision = -1; writeFileSync(saved.path, JSON.stringify(value));
-  await assert.rejects(chaining.restore(a), { code: 'CHAINING_UNAVAILABLE' });
+test('project resolution accepts one Git worktree and rejects mismatched roots', async t => {
+  const root = temporary(t), first = join(root, 'first'), nested = join(first, 'nested'), second = join(root, 'second');
+  mkdirSync(first); mkdirSync(nested); mkdirSync(second);
+  execFileSync('git', ['init', '-q', first], { windowsHide: true });
+  execFileSync('git', ['init', '-q', second], { windowsHide: true });
+  assert.equal(await resolveSessionProject(nested, first), await resolveSessionProject(first, nested));
+  await assert.rejects(resolveSessionProject(first, second), { code: 'CHAINING_PROJECT_MISMATCH' });
 });
 
-test('retention keeps pinned sources and claimed tickets, and only cleans the saving owner', async t => {
-  let time = Date.parse('2026-01-01T00:00:00.000Z');
-  const chaining = new Chaining(temporary(t), { now: () => time, limits: { keep_per_session: 1, retention_ms: 1000 } });
-  await chaining.bind(a, { chain_id: 'work' }); const first = await save(chaining, a);
-  await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  const ticket = await chaining.createTicket({ chain_id: 'work', source_session_id: a }); await chaining.claimTicket(c, ticket.ticket);
-  time += 1; const second = await save(chaining, a);
-  await confirm(chaining, b);
-  time += 1; const other = await save(chaining, b);
-  time += 3600000;
-  const third = await save(chaining, a);
-  assert.equal(existsSync(first.path), true); assert.equal(existsSync(second.path), false);
-  assert.equal(existsSync(other.path), true); assert.equal(existsSync(third.path), true);
-  assert.equal((await chaining.claimTicket(c, ticket.ticket)).status, 'owner_resume');
+test('project resolution accepts matching non-Git paths and ignores inherited Git routing variables', async t => {
+  const root = temporary(t), gitRoot = join(root, 'git'), nested = join(gitRoot, 'nested'), plain = join(root, 'plain');
+  mkdirSync(gitRoot); mkdirSync(nested); mkdirSync(plain);
+  execFileSync('git', ['init', '-q', gitRoot], { windowsHide: true });
+  assert.equal(await resolveSessionProject(plain, plain), plain);
+  assert.equal(await resolveSessionProject(nested, nested, { ...process.env, GIT_DIR: join(root, 'missing'), GIT_WORK_TREE: plain }), gitRoot);
+  await assert.rejects(resolveSessionProject(nested, plain), { code: 'CHAINING_PROJECT_MISMATCH' });
+  await assert.rejects(resolveSessionProject('relative', plain), { code: 'CHAINING_PROJECT_UNAVAILABLE' });
 });
 
-test('SessionEnd skips retention and cleanup failure does not reverse a save', async t => {
-  const chaining = new Chaining(temporary(t), { limits: { keep_per_session: 1 } });
-  await chaining.bind(a, { chain_id: 'work' });
-  const first = await save(chaining, a);
-  await save(chaining, a, 'End', 'SessionEnd');
-  assert.equal(existsSync(first.path), true);
-  chaining.store.cleanup = () => { throw new Error('Injected cleanup error'); };
-  const result = await save(chaining, a);
-  assert.equal(result.status, 'saved'); assert.match(result.warnings[0], /cleanup failed/u);
-  assert.equal((await chaining.restore(a)).checkpoint.id, result.checkpoint_id);
-});
-
-test('automatic saves cannot replace a source before restore is confirmed', async t => {
-  const root = temporary(t), chaining = new Chaining(root);
-  const source = await chaining.bind(a, { chain_id: 'work' });
-  assert.equal(source.binding.restore_pending, false);
-  const saved = await save(chaining, a, 'Source marker');
-  const bound = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  assert.equal(bound.binding.restore_pending, true);
-  const before = readFileSync(chaining.store.path), files = readdirSync(chaining.store.checkpoints);
-  for (const event of ['Stop', 'SessionEnd', 'PreCompact']) {
-    assert.deepEqual(await save(chaining, b, 'Before first restore', event), { status: 'awaiting_restore' });
-    const restored = await new Chaining(root).restore(b);
-    assert.equal(restored.checkpoint.id, saved.checkpoint_id);
-    assert.equal(restored.checkpoint.automatic.messages[0].text, 'Source marker');
-    assert.equal(restored.binding.restore_pending, true);
-  }
-  assert.deepEqual(readFileSync(chaining.store.path), before);
-  assert.deepEqual(readdirSync(chaining.store.checkpoints), files);
-  assert.equal((await confirm(chaining, b)).status, 'confirmed');
-  assert.equal((await new Chaining(root).status(b)).binding.restore_pending, false);
-  const own = await save(chaining, b, 'Restored owner progress');
-  assert.equal(own.status, 'saved');
-  assert.equal((await chaining.restore(b)).checkpoint.id, own.checkpoint_id);
-  assert.equal((await chaining.status(b)).binding.pinned_checkpoint_id, saved.checkpoint_id);
-});
-
-test('restore confirmation checks both binding and checkpoint and rejects stale relinks', async t => {
-  const chaining = new Chaining(temporary(t));
-  await chaining.bind(a, { chain_id: 'work' }); const source = await save(chaining, a);
-  const bound = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  const expected = { expected_binding_id: bound.binding.id, expected_checkpoint_id: source.checkpoint_id };
-  await assert.rejects(chaining.confirmRestore(b, { ...expected, expected_binding_id: randomUUID() }), { code: 'CHAINING_CONFLICT' });
-  await assert.rejects(chaining.confirmRestore(b, { ...expected, expected_checkpoint_id: randomUUID() }), { code: 'CHAINING_CONFLICT' });
-  assert.equal((await chaining.status(b)).binding.restore_pending, true);
-  const unlinked = await chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: source.checkpoint_id });
-  await assert.rejects(chaining.confirmRestore(b, expected), { code: 'CHAINING_CONFLICT' });
-  await chaining.relink(b, { tombstone_id: unlinked.tombstone.id, chain_id: 'work', source_session_id: a });
-  await assert.rejects(chaining.confirmRestore(b, expected), { code: 'CHAINING_CONFLICT' });
-  assert.equal((await chaining.status(b)).binding.restore_pending, true);
-  assert.equal((await confirm(chaining, b)).status, 'confirmed');
-  assert.equal((await confirm(chaining, b)).status, 'already_confirmed');
-  const current = await chaining.restore(b);
-  await save(chaining, b);
-  await assert.rejects(chaining.confirmRestore(b, { expected_binding_id: current.binding.id, expected_checkpoint_id: current.checkpoint.id }), { code: 'CHAINING_CONFLICT' });
-});
-
-test('legacy binding reads infer pending restore without changing the saved index', async t => {
-  const chaining = new Chaining(temporary(t));
-  await chaining.bind(a, { chain_id: 'work' }); await save(chaining, a);
-  await chaining.bind(b, { chain_id: 'work', source_session_id: a });
-  await chaining.bind(c, { chain_id: 'work', source_session_id: a }); await confirm(chaining, c); await save(chaining, c);
-  const legacy = JSON.parse(readFileSync(chaining.store.path));
-  for (const binding of Object.values(legacy.bindings)) delete binding.restore_pending;
-  writeFileSync(chaining.store.path, JSON.stringify(legacy));
-  const before = readFileSync(chaining.store.path);
-  assert.equal((await chaining.status(a)).binding.restore_pending, false);
-  assert.equal((await chaining.restore(b)).binding.restore_pending, true);
-  assert.equal((await chaining.status(c)).binding.restore_pending, false);
-  assert.deepEqual(readFileSync(chaining.store.path), before);
-  assert.equal((await save(chaining, b)).status, 'awaiting_restore');
+test('project resolution rejects a Git worktree root redirected outside the session path', async t => {
+  const root = temporary(t), repository = join(root, 'repository'), redirected = join(root, 'redirected');
+  mkdirSync(repository); mkdirSync(redirected);
+  execFileSync('git', ['init', '-q', repository], { windowsHide: true });
+  execFileSync('git', ['-C', repository, 'config', 'core.worktree', redirected], { windowsHide: true });
+  await assert.rejects(resolveSessionProject(redirected, repository), { code: 'CHAINING_PROJECT_UNAVAILABLE' });
 });

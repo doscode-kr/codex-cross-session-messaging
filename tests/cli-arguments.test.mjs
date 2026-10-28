@@ -61,6 +61,12 @@ test('invalid CLI input and missing identity do not create message state', async
   assert.equal(unknown.exit, 1);
   assert.equal(JSON.parse(unknown.stderr).code, 'UNKNOWN_TOOL');
   assert.equal(existsSync(join(parent, 'missing')), false);
+  for (const command of ['link_chain', 'unlink_chain', 'relink_chain']) {
+    const legacy = await cli(root, [command, '--session=session-a', '--arbitrary=value']);
+    assert.equal(legacy.exit, 1);
+    assert.equal(JSON.parse(legacy.stderr).code, 'CHAINING_SESSION_LOCAL_ONLY');
+    assert.equal(existsSync(join(parent, 'missing')), false);
+  }
   const missingIdentity = await cli(root, ['list_agents']);
   assert.equal(missingIdentity.exit, 1);
   assert.equal(JSON.parse(missingIdentity.stderr).code, 'IDENTITY_MISSING');

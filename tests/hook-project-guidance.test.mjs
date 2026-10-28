@@ -5,22 +5,30 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { runHook } from '../plugins/cross-session/src/hooks.mjs';
+import { readProjectGuidance } from '../plugins/cross-session/src/project-guidance.mjs';
 import { temporary } from './helpers.mjs';
 
 const execute = promisify(execFile);
 const clean = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
+const session = '12345678-0000-4000-8000-000000000001';
 async function git(cwd, args) {
   return (await execute('git', args, { cwd, env: clean, windowsHide: true })).stdout.trim();
 }
 function chainingDependencies(extra = {}) {
+  const chaining = {
+    ensureOwnSession: async (_owner, { project }) => ({ status: 'active', reason: 'SESSION_ACTIVE', session: { owner: session, project, reset_at: null } }),
+    restore: async (_owner, { project }) => ({ status: 'empty', reason: 'NO_CHECKPOINT', relationship: { receiving_session_id: session, project } }),
+    ...extra.chaining
+  };
   return {
-    readTranscript: () => ({ sessionId: 'fixture' }),
-    chaining: { restore: async () => ({ status: 'empty', relationship: { receiving_session_id: 'fixture' } }) },
-    ...extra
+    readTranscript: hookInput => ({ sessionId: session, transcriptCwd: hookInput.cwd }),
+    resolveProject: async inputCwd => inputCwd,
+    ...extra,
+    chaining
   };
 }
 const input = (cwd, source = 'startup') => ({
-  hook_event_name: 'SessionStart', session_id: 'fixture', permission_mode: 'never', source, cwd
+  hook_event_name: 'SessionStart', session_id: session, permission_mode: 'never', source, cwd
 });
 
 test('SessionStart injects current project guidance for each supported lifecycle', async t => {
@@ -32,7 +40,7 @@ test('SessionStart injects current project guidance for each supported lifecycle
   const common = await git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   for (const source of ['startup', 'resume', 'compact', 'clear']) {
     await writeFile(join(cwd, 'AGENTS.md'), `${source}-hook-body`);
-    const output = await runHook(input(cwd, source), client, clean, chainingDependencies());
+    const output = await runHook(input(cwd, source), client, clean, chainingDependencies({ runProjectGuidance: readProjectGuidance }));
     const context = output.hookSpecificOutput.additionalContext;
     assert.match(context, /<cross-session-project-guidance>/);
     assert.match(context, new RegExp(`${source}-hook-body`));
@@ -71,7 +79,7 @@ test('guidance, chaining, and broker work start independently', async () => {
     assert.equal(guidanceStarted, true);
     assert.equal(chainingStarted, true);
     releaseGuidance({ status: 'empty' });
-    releaseChaining({ status: 'empty', relationship: { receiving_session_id: 'fixture' } });
+    releaseChaining({ status: 'empty', relationship: { receiving_session_id: session } });
     return {};
   } };
   const output = await runHook(input(process.cwd()), client, process.env, dependencies);
@@ -89,7 +97,7 @@ test('guidance failures do not hide broker or chaining results', async () => {
   ]) {
     const output = await runHook(input(process.cwd()), client, process.env, chainingDependencies({ runProjectGuidance }));
     assert.match(output.hookSpecificOutput.additionalContext, /Cross-session project guidance is unavailable: PROJECT_GUIDANCE_/);
-    assert.match(output.hookSpecificOutput.additionalContext, /Cross-session chaining hook/);
+    assert.match(output.hookSpecificOutput.additionalContext, /Cross-session session continuity hook/);
   }
   assert.equal(brokerCalls, 3);
 
@@ -101,7 +109,7 @@ test('guidance failures do not hide broker or chaining results', async () => {
 
   const chainingFailure = await runHook(input(process.cwd()), client, process.env, chainingDependencies({
     runProjectGuidance: () => ({ status: 'loaded', context: marker }),
-    chaining: { async restore() { throw new Error('chaining unavailable'); } }
+    chaining: { async restore() { throw new Error('continuity unavailable'); } }
   }));
   assert.match(chainingFailure.hookSpecificOutput.additionalContext, /"fixture":true/);
   assert.match(chainingFailure.hookSpecificOutput.additionalContext, /CHAINING_UNAVAILABLE/);

@@ -5,7 +5,7 @@
 The plugin reads your project's instruction files when the SessionStart hook runs.
 It puts the file contents directly in the next model context.
 This also occurs when the same session resumes or its context is compacted.
-You do not need a chain binding or a new session.
+It works in the current session without a link command.
 
 ## Use
 
@@ -53,11 +53,11 @@ If a read fails or the combined size exceeds the limit, the plugin omits the who
 It reports the reason instead of cutting an instruction in half.
 This differs from Codex's own instruction-size truncation policy.
 The reader also has a time limit and does not retry after a timeout.
-Its failure does not disable messaging or handoff restoration.
+Its failure does not disable messaging or restoration of this session's work.
 No instruction files is a normal result.
 
 Project guidance does not grant new approval or change session permissions.
-Peer messages and saved handoffs remain separate untrusted data.
+Peer messages and saved work reports remain separate untrusted data.
 Text delivery does not prove that a model follows the instructions.
 
 ## Avoid duplicate project hooks

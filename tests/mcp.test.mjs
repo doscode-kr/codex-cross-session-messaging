@@ -40,6 +40,8 @@ test('MCP stdio handshake and tool discovery emit only JSON-RPC on stdout', asyn
   assert.equal(responses[0].result.protocolVersion, '2024-11-05');
   assert.ok(responses[1].result.tools.some(t => t.name === 'send_message'));
   assert.ok(responses[1].result.tools.some(t => t.name === 'claim_leader'));
+  assert.ok(responses[1].result.tools.some(t => t.name === 'get_chain'));
+  assert.equal(responses[1].result.tools.some(t => ['link_chain', 'unlink_chain', 'relink_chain'].includes(t.name)), false);
   lines.close();
 });
 
@@ -121,6 +123,28 @@ test('display options must be boolean and invalid options never reach the broker
     assert.equal(result.isError, true);
     assert.equal(result.structuredContent.code, 'INVALID_ARGUMENT');
     assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+  }
+});
+
+test('session-local continuity summary does not describe cross-session binding', async () => {
+  const data = { mode: 'session_local', owner: 'a', status: 'active', reason: 'SESSION_ACTIVE', session: { owner: 'a', latest_checkpoint_id: 'checkpoint-a' } };
+  const result = await handleMcp(call('get_chain'), { async call(name, args, id) {
+    assert.equal(name, 'get_chain');
+    assert.deepEqual(args, {});
+    assert.equal(id, 'a');
+    return data;
+  } });
+  assert.equal(result.isError, false);
+  assert.match(result.content[0].text, /session_local: active/);
+  assert.match(result.content[0].text, /session: a/);
+  assert.doesNotMatch(result.content[0].text, /source|binding|unlink/i);
+});
+
+test('removed chaining tools return the session-local-only error before broker access', async () => {
+  for (const name of ['link_chain', 'unlink_chain', 'relink_chain']) {
+    const result = await handleMcp(call(name, { arbitrary: 'value' }), { call() { assert.fail('Unexpected broker call'); } });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.code, 'CHAINING_SESSION_LOCAL_ONLY');
   }
 });
 

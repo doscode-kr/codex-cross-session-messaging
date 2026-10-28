@@ -9,7 +9,7 @@ const pluginId = 'cross-session@cross-session-local';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 // Ask the host for trust. Do not infer trust from a file or write a trust hash.
-export async function readChainingHooks({ cwd = process.cwd(), native } = {}) {
+export async function readSessionContinuityHooks({ cwd = process.cwd(), native } = {}) {
   const owned = !native;
   native ??= new NativeAdapter();
   try {
@@ -33,3 +33,5 @@ export async function readChainingHooks({ cwd = process.cwd(), native } = {}) {
     return { status: 'unavailable', reason, execution_confirmed: false, events: [] };
   } finally { if (owned) native.close(); }
 }
+
+export const readChainingHooks = readSessionContinuityHooks;

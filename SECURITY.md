@@ -22,14 +22,17 @@ They can contain objectives, scope, completion criteria, next actions, and repor
 Work state has no automatic retention period.
 Do not save secrets in work state.
 Work-state tool results can also reach the configured model provider.
-[Session chaining](docs/CHAINING.md) stores plaintext checkpoint copies in `chaining-v1`.
-They can include work reports, recent user and assistant text, Git state, and source session UUIDs.
-Protected checkpoints and claimed tickets have no automatic expiry for deletion.
+[Session continuity](docs/CHAINING.md) stores plaintext checkpoints in `session-continuity-v1`.
+They can include the first observed user record, recent messages, work reports, Git state, and the session UUID and project.
+Each session can restore only its own records from its verified project.
+The latest checkpoint of each retained session is protected from cleanup.
+Closed sessions can expire under the retention limits.
+The old `chaining-v1` store is preserved but is not read or migrated.
 The same OS account can read these records.
-Restored handoffs can reach the model provider and must not contain secrets.
+Restored records can reach the model provider and must not contain secrets.
 The plugin does not make an external model call to create a checkpoint.
-Unlink cannot erase handoff content already sent to the model.
-Launch tickets select their first consumer; they do not authenticate the parent's intent.
+Clearing context does not erase records already sent to the model.
+Continuity does not link other sessions or start a new Codex process.
 The SessionStart hook reads local [project instructions](docs/PROJECT_GUIDANCE.md) into model context.
 The plugin does not store these bodies in its journal or checkpoints.
 Codex can retain them in conversation records and send them to the model provider.
@@ -77,7 +80,7 @@ See [work state and Stop limits](docs/CONTINUATION.md).
 
 ## Supported security fixes
 
-This project is at version 0.1.0.
+This project is at version 0.2.0.
 No separate long-term support branch is provided.
 Use the latest release after you read its compatibility notes.
 Report the release or commit you use.

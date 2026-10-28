@@ -8,7 +8,7 @@ You do not need a project task system.
 The broker is the local program that handles message delivery.
 It also records messages.
 For saved objectives and the optional Stop check, see [work state](CONTINUATION.md).
-For handoffs to new sessions, see [session chaining](CHAINING.md).
+For automatic work continuity within each session, see [session chaining](CHAINING.md).
 
 ## 1. Prepare and install
 

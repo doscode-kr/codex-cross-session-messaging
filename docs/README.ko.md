@@ -11,7 +11,7 @@
 | [사용자 설명서](MANUAL.ko.md) | 전체 사용 절차와 도구 예제. |
 | [작업 상태와 종료 검사](CONTINUATION.ko.md) | 체크리스트, 시도 한도, 근거, 선택적 단일 추가 실행. |
 | [프로젝트 지침](PROJECT_GUIDANCE.ko.md) | 시작·재개·압축 뒤 AGENTS 본문 주입. |
-| [세션 체이닝](CHAINING.ko.md) | 고정한 인계, 실행 티켓, hook 신뢰, 연결 복구. |
+| [세션 체이닝](CHAINING.ko.md) | 각 세션의 자동 작업 저장·복원과 AGENTS 본문 주입. |
 | [공동 작업 기초 평가](COORDINATION_EVALUATION.ko.md) | 한도가 있는 계획 검사와 실제 Codex 호스트 프로토콜 시험. |
 | [업데이트와 진단](OPERATIONS.ko.md) | 원본과 설치된 캐시의 업데이트. 운영 오류 해결. |
 | [삭제 안내](UNINSTALL.ko.md) | 플러그인 삭제. 메시지 데이터 보존과 안전한 삭제. |

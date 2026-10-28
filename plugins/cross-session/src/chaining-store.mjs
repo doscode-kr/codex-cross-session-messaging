@@ -1,66 +1,70 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import {
+  closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync,
+  openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync
+} from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 import { isMainThread, threadId } from 'node:worker_threads';
 import { CrossSessionError } from './errors.mjs';
 import { validateWorkStateEntry } from './work-state.mjs';
 
-export const chainingLimits = Object.freeze({ index_bytes: 2 * 1024 * 1024, checkpoint_bytes: 256 * 1024, total_bytes: 64 * 1024 * 1024,
-  checkpoints: 2048, bindings: 1024, tombstones: 2048, tickets: 4096, keep_per_session: 20, retention_ms: 30 * 86400000 });
+export const chainingLimits = Object.freeze({
+  index_bytes: 2 * 1024 * 1024, checkpoint_bytes: 256 * 1024, total_bytes: 64 * 1024 * 1024,
+  checkpoints: 2048, sessions: 1024, keep_per_session: 20, retention_ms: 30 * 86400000
+});
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-export const chainPattern = /^[A-Za-z0-9._-]{1,80}$/u;
 export const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const chainingError = (code, message) => new CrossSessionError(`CHAINING_${code}`, message);
-const unavailable = () => chainingError('UNAVAILABLE', 'The chaining store is not available. Message tools remain available.');
+const unavailable = () => chainingError('UNAVAILABLE', 'The session continuity store is not available. Message tools remain available.');
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+const nullableDate = value => value === null || validDate(value);
 const nullableUuid = value => value === null || (typeof value === 'string' && uuidPattern.test(value));
 const exactKeys = (value, keys) => plainObject(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
-const initialState = () => ({ version: 1, bindings: {}, tombstones: {}, tickets: {} });
+const initialState = () => ({ version: 1, sessions: {} });
+
+export function validProject(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096 && !value.includes('\0') && isAbsolute(value);
+}
+
+function validRecord(value, roles, provenance) {
+  if (!plainObject(value)) return false;
+  const keys = Object.keys(value).sort().join(',');
+  if (!['provenance,role,text', 'observed_at,provenance,role,text'].includes(keys)) return false;
+  return roles.includes(value.role) && typeof value.text === 'string' && value.text.length <= 65536
+    && value.provenance === provenance && (value.observed_at === undefined || validDate(value.observed_at));
+}
+
+function validGit(value) {
+  return value === null || (exactKeys(value, ['branch', 'head', 'dirty'])
+    && typeof value.branch === 'string' && value.branch.length <= 1024 && typeof value.head === 'string'
+    && /^(?:[0-9a-f]{40}|[0-9a-f]{64}|)$/u.test(value.head) && typeof value.dirty === 'boolean');
+}
 
 export function validateCheckpoint(value) {
-  if (!exactKeys(value, ['version', 'id', 'session_id', 'chain_id', 'event', 'created_at', 'structured', 'automatic']) || value.version !== 1
-    || typeof value.id !== 'string' || !uuidPattern.test(value.id) || typeof value.session_id !== 'string' || !uuidPattern.test(value.session_id)
-    || typeof value.chain_id !== 'string' || !chainPattern.test(value.chain_id)
-    || !['Stop', 'PreCompact', 'SessionEnd'].includes(value.event) || !validDate(value.created_at)) throw unavailable();
-  if (value.structured !== null && (!plainObject(value.structured) || value.structured.owner !== value.session_id)) throw unavailable();
+  const keys = ['version', 'id', 'owner', 'project', 'event', 'created_at', 'original_request', 'original_request_reason', 'recent_messages', 'structured', 'git'];
+  if (!exactKeys(value, keys) || value.version !== 1 || !uuidPattern.test(value.id) || !uuidPattern.test(value.owner)
+    || !validProject(value.project) || !['Stop', 'PreCompact', 'SessionEnd'].includes(value.event) || !validDate(value.created_at)
+    || (value.original_request !== null && !validRecord(value.original_request, ['user'], 'observed_user_record'))
+    || !['OBSERVED', 'NOT_AVAILABLE', 'RESET_BOUNDARY'].includes(value.original_request_reason)
+    || (value.original_request === null) === (value.original_request_reason === 'OBSERVED')
+    || !Array.isArray(value.recent_messages) || value.recent_messages.length > 100 || !validGit(value.git)) throw unavailable();
+  for (const message of value.recent_messages) if (!validRecord(message, ['user', 'assistant'], 'observed_transcript_record')) throw unavailable();
   if (value.structured !== null) {
+    if (!plainObject(value.structured) || value.structured.owner !== value.owner) throw unavailable();
     try { validateWorkStateEntry(value.structured); } catch { throw unavailable(); }
   }
-  const automatic = value.automatic;
-  if (!exactKeys(automatic, ['messages', 'git']) || !Array.isArray(automatic.messages) || automatic.messages.length > 100) throw unavailable();
-  for (const message of automatic.messages) {
-    if (!exactKeys(message, ['role', 'text']) || !['user', 'assistant'].includes(message.role) || typeof message.text !== 'string' || message.text.length > 65536) throw unavailable();
-  }
-  if (automatic.git !== null && (!exactKeys(automatic.git, ['branch', 'head', 'dirty'])
-    || typeof automatic.git.branch !== 'string' || automatic.git.branch.length > 1024 || typeof automatic.git.head !== 'string'
-    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64}|)$/u.test(automatic.git.head) || typeof automatic.git.dirty !== 'boolean')) throw unavailable();
   return value;
 }
 
 export function validateChainingState(value, limits = chainingLimits) {
-  if (!exactKeys(value, ['version', 'bindings', 'tombstones', 'tickets']) || value.version !== 1) throw unavailable();
-  for (const key of ['bindings', 'tombstones', 'tickets']) if (!plainObject(value[key]) || Object.keys(value[key]).length > limits[key]) throw unavailable();
-  for (const [owner, binding] of Object.entries(value.bindings)) {
-    const keys = ['id', 'session_id', 'chain_id', 'source_session_id', 'pinned_checkpoint_id', 'latest_checkpoint_id', 'created_at'];
-    const legacy = exactKeys(binding, keys);
-    if (!uuidPattern.test(owner) || (!legacy && !exactKeys(binding, [...keys, 'restore_pending']))
-      || binding.session_id !== owner || !uuidPattern.test(binding.id) || !chainPattern.test(binding.chain_id) || !nullableUuid(binding.source_session_id)
-      || !nullableUuid(binding.pinned_checkpoint_id) || !nullableUuid(binding.latest_checkpoint_id) || !validDate(binding.created_at)
-      || (binding.pinned_checkpoint_id !== null && binding.source_session_id === null)) throw unavailable();
-    if (legacy) binding.restore_pending = binding.pinned_checkpoint_id !== null && binding.latest_checkpoint_id === null;
-    if (typeof binding.restore_pending !== 'boolean'
-      || (binding.restore_pending && (binding.pinned_checkpoint_id === null || binding.latest_checkpoint_id !== null))) throw unavailable();
-  }
-  for (const [owner, tombstone] of Object.entries(value.tombstones)) {
-    if (!uuidPattern.test(owner) || !exactKeys(tombstone, ['id', 'session_id', 'chain_id', 'checkpoint_id', 'unlinked_at'])
-      || tombstone.session_id !== owner || !uuidPattern.test(tombstone.id) || !chainPattern.test(tombstone.chain_id)
-      || !nullableUuid(tombstone.checkpoint_id) || !validDate(tombstone.unlinked_at) || Object.hasOwn(value.bindings, owner)) throw unavailable();
-  }
-  for (const [digest, ticket] of Object.entries(value.tickets)) {
-    if (!/^[a-f0-9]{64}$/u.test(digest) || !exactKeys(ticket, ['chain_id', 'source_session_id', 'pinned_checkpoint_id', 'created_at', 'expires_at', 'owner', 'binding_id'])
-      || !chainPattern.test(ticket.chain_id) || !uuidPattern.test(ticket.source_session_id) || !nullableUuid(ticket.pinned_checkpoint_id)
-      || !validDate(ticket.created_at) || !validDate(ticket.expires_at) || Date.parse(ticket.expires_at) <= Date.parse(ticket.created_at)
-      || !nullableUuid(ticket.owner) || !nullableUuid(ticket.binding_id) || (ticket.owner === null) !== (ticket.binding_id === null)) throw unavailable();
+  if (!exactKeys(value, ['version', 'sessions']) || value.version !== 1 || !plainObject(value.sessions)
+    || Object.keys(value.sessions).length > limits.sessions) throw unavailable();
+  for (const [owner, session] of Object.entries(value.sessions)) {
+    const keys = ['owner', 'project', 'state', 'latest_checkpoint_id', 'created_at', 'updated_at', 'closed_at', 'reset_at'];
+    if (!uuidPattern.test(owner) || !exactKeys(session, keys) || session.owner !== owner || !validProject(session.project)
+      || !['active', 'closed'].includes(session.state) || !nullableUuid(session.latest_checkpoint_id)
+      || !validDate(session.created_at) || !validDate(session.updated_at) || !nullableDate(session.closed_at) || !nullableDate(session.reset_at)
+      || (session.state === 'active' && session.closed_at !== null) || (session.state === 'closed' && session.closed_at === null)) throw unavailable();
   }
   return value;
 }
@@ -69,15 +73,19 @@ export function validateChainingState(value, limits = chainingLimits) {
 export class ChainingStore {
   constructor(root, { limits = {}, now = () => Date.now(), lock_owner_id } = {}) {
     this.root = resolve(root);
-    this.directory = join(this.root, 'chaining-v1');
+    this.directory = join(this.root, 'session-continuity-v1');
     this.path = join(this.directory, 'state.json');
     this.checkpoints = join(this.directory, 'checkpoints');
     this.lockPath = join(this.directory, 'write.lock');
     this.markerPath = join(this.directory, 'format');
-    if (lock_owner_id !== undefined && (typeof lock_owner_id !== 'string' || !uuidPattern.test(lock_owner_id))) throw chainingError('INVALID_ARGUMENT', 'The lock owner ID must be a UUID.');
+    if (lock_owner_id !== undefined && (typeof lock_owner_id !== 'string' || !uuidPattern.test(lock_owner_id))) {
+      throw chainingError('INVALID_ARGUMENT', 'The lock owner ID must be a UUID.');
+    }
     this.lockOwnerId = lock_owner_id;
     this.limits = { ...chainingLimits, ...limits };
-    for (const value of Object.values(this.limits)) if (!Number.isSafeInteger(value) || value < 1) throw chainingError('INVALID_ARGUMENT', 'Chaining limits must be positive integers.');
+    for (const value of Object.values(this.limits)) if (!Number.isSafeInteger(value) || value < 1) {
+      throw chainingError('INVALID_ARGUMENT', 'Session continuity limits must be positive integers.');
+    }
     this.now = now;
   }
   directoryStat(path) {
@@ -127,7 +135,6 @@ export class ChainingStore {
       let stat;
       try { stat = lstatSync(join(this.directory, name)); }
       catch (error) {
-        // A contender can remove its own temporary file without the write lock.
         if (error.code === 'ENOENT' && /^lock-\d+-\d+-[0-9a-f-]{36}\.tmp$/u.test(name)) continue;
         throw error;
       }
@@ -156,10 +163,10 @@ export class ChainingStore {
   writeState(state) {
     validateChainingState(state, this.limits);
     const raw = JSON.stringify(state);
-    if (Buffer.byteLength(raw) > this.limits.index_bytes) throw chainingError('LIMIT', 'The chaining index size limit was reached. No record was removed.');
+    if (Buffer.byteLength(raw) > this.limits.index_bytes) throw chainingError('LIMIT', 'The continuity index size limit was reached.');
     const { bytes } = this.inventory();
     const oldBytes = existsSync(this.path) ? lstatSync(this.path).size : 0;
-    if (bytes - oldBytes + Buffer.byteLength(raw) > this.limits.total_bytes) throw chainingError('LIMIT', 'The chaining store size limit was reached. No record was removed.');
+    if (bytes - oldBytes + Buffer.byteLength(raw) > this.limits.total_bytes) throw chainingError('LIMIT', 'The continuity store size limit was reached.');
     this.writeAtomic(this.path, raw);
   }
   writeCheckpoint(value) {
@@ -167,7 +174,7 @@ export class ChainingStore {
     const raw = JSON.stringify(value), size = Buffer.byteLength(raw);
     const { bytes, count } = this.inventory();
     if (size > this.limits.checkpoint_bytes || bytes + size > this.limits.total_bytes || count >= this.limits.checkpoints) {
-      throw chainingError('LIMIT', 'The checkpoint limit was reached. No record was removed.');
+      throw chainingError('LIMIT', 'The checkpoint limit was reached.');
     }
     const temporary = join(this.checkpoints, `${value.id}.${randomUUID()}.tmp`), warnings = [];
     let fd;
@@ -187,15 +194,14 @@ export class ChainingStore {
     const { bytes, count } = this.inventory();
     const oldBytes = lstatSync(this.path).size;
     if (checkpointBytes > this.limits.checkpoint_bytes || indexBytes > this.limits.index_bytes || count >= this.limits.checkpoints
-      || bytes - oldBytes + indexBytes + checkpointBytes > this.limits.total_bytes) {
-      throw chainingError('LIMIT', 'The checkpoint limit was reached. No record was removed.');
-    }
+      || bytes - oldBytes + indexBytes + checkpointBytes > this.limits.total_bytes) throw chainingError('LIMIT', 'The checkpoint limit was reached.');
     const warnings = this.writeCheckpoint(value);
     this.writeState(state);
     return warnings;
   }
   async transaction(change) {
-    const ownerId = this.lockOwnerId ?? randomUUID(), temporary = join(this.directory, `lock-${process.pid}-${threadId}-${ownerId}.tmp`);
+    const ownerId = this.lockOwnerId ?? randomUUID();
+    const temporary = join(this.directory, `lock-${process.pid}-${threadId}-${ownerId}.tmp`);
     let fd, identity, acquired = false, temporaryOwned = false;
     try {
       this.directoryStat(this.root);
@@ -207,10 +213,9 @@ export class ChainingStore {
       identity = fstatSync(fd);
       closeSync(fd); fd = undefined;
       try { linkSync(temporary, this.lockPath); acquired = true; }
-      catch (error) { if (error.code === 'EEXIST') throw chainingError('BUSY', 'Another chaining writer holds the lock. Retry the operation later.'); throw error; }
+      catch (error) { if (error.code === 'EEXIST') throw chainingError('BUSY', 'Another continuity writer holds the lock.'); throw error; }
       unlinkSync(temporary);
       if (!existsSync(this.path)) {
-        // A marker prevents a missing index from erasing saved tombstones.
         if (existsSync(this.markerPath)) throw unavailable();
         const names = readdirSync(this.directory);
         if (names.some(name => name !== 'write.lock' && name !== 'checkpoints' && !/^lock-\d+-\d+-[0-9a-f-]{36}\.tmp$/u.test(name))) throw unavailable();
@@ -221,8 +226,7 @@ export class ChainingStore {
         this.writeState(initialState());
       }
       this.checkDirectories();
-      const state = this.read();
-      return await change(state);
+      return await change(this.read());
     } catch (error) {
       if (error instanceof CrossSessionError && error.code.startsWith('CHAINING_')) throw error;
       throw unavailable();
@@ -231,38 +235,48 @@ export class ChainingStore {
       if (acquired) {
         try {
           const current = lstatSync(this.lockPath);
-          if (acquired && identity && current.dev === identity.dev && current.ino === identity.ino && !current.isSymbolicLink()) unlinkSync(this.lockPath);
+          if (identity && current.dev === identity.dev && current.ino === identity.ino && !current.isSymbolicLink()) unlinkSync(this.lockPath);
         } catch { /* A failed lock release leaves the store closed to other writers. */ }
       }
-      if (temporaryOwned) try { unlinkSync(temporary); } catch { /* A temporary file can remain after a process or disk failure. */ }
+      if (temporaryOwned) try { unlinkSync(temporary); } catch { /* A failed writer can leave its own temporary file. */ }
     }
   }
-  cleanup(state, owner) {
-    const protectedIds = new Set();
-    for (const binding of Object.values(state.bindings)) { protectedIds.add(binding.latest_checkpoint_id); protectedIds.add(binding.pinned_checkpoint_id); }
-    for (const ticket of Object.values(state.tickets)) if (ticket.owner !== null || Date.parse(ticket.expires_at) > this.now()) protectedIds.add(ticket.pinned_checkpoint_id);
-    const entries = [], warnings = [];
+  pruneClosed(state, currentOwner = null) {
+    const removed = [];
+    for (const [owner, session] of Object.entries(state.sessions)) {
+      if (owner === currentOwner || session.state !== 'closed' || this.now() - Date.parse(session.closed_at) <= this.limits.retention_ms) continue;
+      removed.push(session.latest_checkpoint_id);
+      delete state.sessions[owner];
+    }
+    return removed.filter(Boolean);
+  }
+  cleanup(state, owner = null) {
+    const protectedIds = new Set(Object.values(state.sessions).map(session => session.latest_checkpoint_id).filter(Boolean));
+    const byOwner = new Map(), warnings = [];
     for (const name of readdirSync(this.checkpoints)) {
       if (!/^[0-9a-f-]{36}\.json$/u.test(name)) { warnings.push('Unknown checkpoint files were kept.'); continue; }
       try {
         const checkpoint = this.readCheckpoint(name.slice(0, -5));
-        if (checkpoint.session_id === owner) entries.push(checkpoint);
+        if (!byOwner.has(checkpoint.owner)) byOwner.set(checkpoint.owner, []);
+        byOwner.get(checkpoint.owner).push(checkpoint);
       } catch { warnings.push('Unreadable checkpoint files were kept.'); }
     }
-    entries.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
-    for (let index = 0; index < entries.length; index++) {
-      const checkpoint = entries[index];
-      if (protectedIds.has(checkpoint.id)) continue;
-      if (index < this.limits.keep_per_session && this.now() - Date.parse(checkpoint.created_at) <= this.limits.retention_ms) continue;
-      try { unlinkSync(this.checkpointPath(checkpoint.id)); } catch { warnings.push('A checkpoint could not be removed.'); }
+    for (const [entryOwner, entries] of byOwner) {
+      if (owner !== null && entryOwner !== owner && Object.hasOwn(state.sessions, entryOwner)) continue;
+      entries.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+      for (let index = 0; index < entries.length; index++) {
+        const checkpoint = entries[index];
+        if (protectedIds.has(checkpoint.id)) continue;
+        if (index < this.limits.keep_per_session && this.now() - Date.parse(checkpoint.created_at) <= this.limits.retention_ms) continue;
+        try { unlinkSync(this.checkpointPath(checkpoint.id)); } catch { warnings.push('A checkpoint could not be removed.'); }
+      }
     }
     return [...new Set(warnings)];
   }
 }
 
-// The caller must create the child or worker with this nonce and await its exit.
-// A timeout alone is not evidence that the worker stopped.
-export function releaseTerminatedChainingLock(root, { process_id = process.pid, thread_id, lock_owner_id } = {}) {
+// The caller must await the child or worker exit before it calls this function.
+export function releaseTerminatedContinuityLock(root, { process_id = process.pid, thread_id, lock_owner_id } = {}) {
   if (!isMainThread || !Number.isSafeInteger(process_id) || process_id <= 0 || !Number.isSafeInteger(thread_id) || thread_id < 0
     || (process_id === process.pid && thread_id === 0) || typeof lock_owner_id !== 'string' || !uuidPattern.test(lock_owner_id)) {
     throw chainingError('INVALID_ARGUMENT', 'Lock release requires a stopped worker ID and its lock owner UUID.');
@@ -288,3 +302,5 @@ export function releaseTerminatedChainingLock(root, { process_id = process.pid, 
     return { released, reason: released ? 'released' : 'owner_mismatch_or_missing' };
   } catch { return { released: false, reason: 'unavailable' }; }
 }
+
+export const releaseTerminatedChainingLock = releaseTerminatedContinuityLock;

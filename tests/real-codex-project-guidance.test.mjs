@@ -92,8 +92,12 @@ import { runHook, writeHookOutput } from ${JSON.stringify(hookSource)};
 let raw = ''; for await (const chunk of process.stdin) raw += chunk;
 const input = JSON.parse(raw);
 const dependencies = {
-  readTranscript: () => ({ sessionId: input.session_id }),
-  chaining: { restore: async () => ({ status: 'empty', relationship: { receiving_session_id: input.session_id } }) }
+  readTranscript: () => ({ sessionId: input.session_id, transcriptCwd: input.cwd }),
+  resolveProject: async () => input.cwd,
+  chaining: {
+    ensureOwnSession: async () => ({ status: 'active', reason: 'SESSION_ACTIVE', session: { owner: input.session_id, project: input.cwd, reset_at: null } }),
+    restore: async () => ({ status: 'empty', reason: 'NO_CHECKPOINT', relationship: { receiving_session_id: input.session_id, project: input.cwd } })
+  }
 };
 const output = await runHook(input, { hook: async () => ({}) }, process.env, dependencies);
 await appendFile(${JSON.stringify(log)}, JSON.stringify({ event: input.hook_event_name, source: input.source, output }) + '\\n');

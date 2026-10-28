@@ -10,7 +10,7 @@ It covers installation, two sessions, messages, leader roles, notifications, upd
 | [User manual](MANUAL.md) | Complete user procedures and tool examples. |
 | [Work state and Stop check](CONTINUATION.md) | Checklists, attempt limits, evidence, and an optional single continuation. |
 | [Project instructions](PROJECT_GUIDANCE.md) | AGENTS contents after startup, resume, and compaction. |
-| [Session chaining](CHAINING.md) | Fixed handoffs, launch tickets, hook trust, and binding recovery. |
+| [Session chaining](CHAINING.md) | Automatic work continuity and AGENTS delivery within each session. |
 | [Coordination smoke evaluation](COORDINATION_EVALUATION.md) | Bounded plan checks and real Codex host protocol tests. |
 | [Update and diagnostics](OPERATIONS.md) | Update the source and installed cache. Resolve operational errors. |
 | [Removal guide](UNINSTALL.md) | Remove the plugin. Keep or remove message data safely. |

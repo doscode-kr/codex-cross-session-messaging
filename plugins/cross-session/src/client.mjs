@@ -6,6 +6,19 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { CrossSessionError } from './errors.mjs';
 
+function requestAbort(external, timeoutMs) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!external) return { signal: timeout, dispose() {} };
+  if (typeof AbortSignal.any === 'function') return { signal: AbortSignal.any([external, timeout]), dispose() {} };
+  const controller = new AbortController(), sources = [external, timeout];
+  const abort = event => controller.abort(event.target.reason);
+  for (const signal of sources) {
+    if (signal.aborted) { controller.abort(signal.reason); break; }
+    signal.addEventListener('abort', abort, { once: true });
+  }
+  return { signal: controller.signal, dispose() { for (const signal of sources) signal.removeEventListener('abort', abort); } };
+}
+
 export function settings(env = process.env, { create = true } = {}) {
   const requested = resolve(env.CROSS_SESSION_HOME || join(env.CODEX_HOME || join(homedir(), '.codex'), 'cross-session'));
   if (create) mkdirSync(requested, { recursive: true, mode: 0o700 });
@@ -40,13 +53,14 @@ export class BrokerClient {
     this.createState = createState;
     this.autoStart = autoStart && createState;
   }
-  async request(path, data) {
+  async request(path, data, { signal } = {}) {
     const token = authToken(this.config.root, { create: this.createState });
     let response, body;
+    const requestSignal = requestAbort(signal, this.timeoutMs);
     try {
       response = await fetch(`http://127.0.0.1:${this.config.port}${path}`, {
         method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', connection: 'close' },
-        body: JSON.stringify({ instance: this.config.instance, ...data }), signal: AbortSignal.timeout(this.timeoutMs), redirect: 'manual'
+        body: JSON.stringify({ instance: this.config.instance, ...data }), signal: requestSignal.signal, redirect: 'manual'
       });
       if (response.status >= 300 && response.status < 400) await response.body?.cancel().catch(() => {});
       else body = await response.json();
@@ -55,7 +69,7 @@ export class BrokerClient {
       const details = { requestPath: path, requestOutcome: 'unknown', ...(response ? { httpStatus: response.status } : {}) };
       if (error instanceof SyntaxError) throw new CrossSessionError('BROKER_RESPONSE_INVALID', 'The broker response is invalid. The request result is unknown. Check message history before another send.', details);
       throw new CrossSessionError('BROKER_TIMEOUT', 'The broker reply was lost or timed out. The request result is unknown. Check message history before another send.', details);
-    }
+    } finally { requestSignal.dispose(); }
     const object = body !== null && typeof body === 'object' && !Array.isArray(body);
     const text = value => typeof value === 'string' && Boolean(value.trim());
     const invalid = !object || (response.ok
@@ -66,8 +80,8 @@ export class BrokerClient {
     if (!response.ok) throw new CrossSessionError(body.code ?? 'BROKER_REJECTED', body.message ?? 'The broker rejected the request.', body);
     return body;
   }
-  async ensure() {
-    try { return await this.request('/health', {}); }
+  async ensure(options = {}) {
+    try { return await this.request('/health', {}, options); }
     catch (error) { if (error.code !== 'BROKER_OFFLINE' || !this.autoStart) throw error; }
     const child = spawn(process.execPath, [fileURLToPath(new URL('./broker.mjs', import.meta.url))], {
       detached: true, windowsHide: true, stdio: 'ignore', env: { ...process.env, CROSS_SESSION_HOME: this.config.root }
@@ -75,12 +89,22 @@ export class BrokerClient {
     child.on('error', () => {});
     child.unref();
     for (let i = 0; i < 60; i++) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      try { return await this.request('/health', {}); }
+      await new Promise((resolveWait, rejectWait) => {
+        if (options.signal?.aborted) return rejectWait(new CrossSessionError('BROKER_TIMEOUT', 'The broker hook deadline expired.'));
+        const timer = setTimeout(done, 100);
+        const aborted = () => { clearTimeout(timer); options.signal.removeEventListener('abort', aborted); rejectWait(new CrossSessionError('BROKER_TIMEOUT', 'The broker hook deadline expired.')); };
+        function done() { options.signal?.removeEventListener('abort', aborted); resolveWait(); }
+        options.signal?.addEventListener('abort', aborted, { once: true });
+      });
+      try { return await this.request('/health', {}, options); }
       catch (error) { if (!['BROKER_OFFLINE', 'TOKEN_NOT_READY'].includes(error.code)) throw error; }
     }
     throw new CrossSessionError('BROKER_START_FAILED', 'The broker did not start. Run the broker command in a terminal to see its error.');
   }
   async call(method, args, sessionId) { await this.ensure(); return this.request('/call', { method, args, sessionId }); }
-  async hook(input, projectRoot) { await this.ensure(); return this.request('/hook', { input, projectRoot }); }
+  async hook(input, projectRoot, { totalTimeoutMs } = {}) {
+    const options = Number.isSafeInteger(totalTimeoutMs) && totalTimeoutMs > 0 ? { signal: AbortSignal.timeout(totalTimeoutMs) } : {};
+    await this.ensure(options);
+    return this.request('/hook', { input, projectRoot }, options);
+  }
 }

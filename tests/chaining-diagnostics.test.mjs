@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { readChainingHooks } from '../plugins/cross-session/src/chaining-diagnostics.mjs';
+import { readChainingHooks, readSessionContinuityHooks } from '../plugins/cross-session/src/chaining-diagnostics.mjs';
 
 const fixture = (eventName, extra = {}) => ({ pluginId: 'cross-session@cross-session-local', eventName, enabled: true, trustStatus: 'trusted', key: `plugin:${eventName}:0:0`, sourcePath: 'plugin/hooks/hooks.json', ...extra });
 const all = ['sessionStart', 'sessionEnd', 'userPromptSubmit', 'stop', 'interrupt', 'preCompact'];
@@ -10,6 +10,10 @@ const native = hooks => ({ async request(method, params) {
   assert.deepEqual(params, { cwds: [resolve('fixture')] });
   return { data: [{ cwd: resolve('fixture'), hooks }] };
 } });
+
+test('legacy diagnostic name aliases session-local continuity diagnostics', () => {
+  assert.equal(readChainingHooks, readSessionContinuityHooks);
+});
 
 test('hook diagnosis distinguishes configured, trusted, disabled and missing hooks', async () => {
   const hooks = [fixture('sessionStart', { trustStatus: 'untrusted' }), fixture('stop', { enabled: false }),

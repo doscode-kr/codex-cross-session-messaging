@@ -2,7 +2,22 @@
 
 [한국어](CHANGELOG.ko.md)
 
-## Unreleased
+## 0.2.0
+
+- Correct session chaining to automatic work continuity within the same session.
+- Remove cross-session link, relink, unlink, and launch flows. Old calls fail without changing state.
+- Keep earlier chaining records untouched. New records use `session-continuity-v1`.
+- Restore only records with the same session UUID and verified project boundary.
+- Keep current AGENTS body injection at startup and context recovery.
+- Exclude built-in project instructions from the first observed work request.
+- Shorten long restored records without changing the saved checkpoint or losing checklist item IDs and states.
+- Bound the full broker hook operation, including status checks and startup polling.
+- Give non-startup hook processes five seconds for startup, bounded work, and exit.
+
+## Earlier development before 0.2.0
+
+The linking and handoff entries below describe the earlier implementation.
+Version 0.2.0 replaces those flows with continuity inside each session.
 
 - Inject project AGENTS file contents at startup, resume, and compaction through the installed SessionStart hook.
 - Keep instruction discovery inside the current worktree, with bounded reads and isolated failure handling.

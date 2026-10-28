@@ -7,6 +7,8 @@
 Send messages between independent Codex CLI sessions on one computer.
 The plugin uses the Codex shared daemon and a local Node.js broker.
 It has no required project workflow.
+Each session also saves and restores its own work across compaction.
+This starts automatically and works without sending messages.
 
 | Recipient state | Delivery |
 |---|---|
@@ -138,13 +140,10 @@ Report unresolved conflicts to the leader if that role is assigned.
 | `cancel_idle_notification` | Cancel your notification request. |
 | `get_work_state` | Read this session's work summary and revision. |
 | `set_work_state` | Save this session's checklist, attempt results, and work summary with a revision check. |
-| `link_chain` | Bind this session to a chain and an exact source checkpoint. |
-| `get_chain` | Read this session's binding and unlink record. |
-| `unlink_chain` | Unlink after comparing the chain and checkpoint IDs. |
-| `relink_chain` | Connect again with the exact unlink record ID. |
+| `get_chain` | Read automatic continuity status for this session. |
 
 See [work state and the optional Stop check](docs/CONTINUATION.md) for completion guidance and limits.
-See [session chaining](docs/CHAINING.md) to pass a saved handoff to a new session.
+See [session chaining](docs/CHAINING.md) for automatic work continuity within each session.
 The trusted SessionStart hook also reloads [project instructions](docs/PROJECT_GUIDANCE.md) when the same session resumes or compacts.
 
 MCP tool results use short text by default.
