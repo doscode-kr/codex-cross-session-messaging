@@ -2,7 +2,10 @@ import { spawn } from 'node:child_process';
 import { connectProxy } from './rpc.mjs';
 import { CrossSessionError } from './errors.mjs';
 import { daemonInfo, resolveCodex } from './codex.mjs';
+import { productVersion } from './version.mjs';
 export { daemonInfo, resolveCodex } from './codex.mjs';
+
+export const nativeClientInfo = Object.freeze({ name: 'codex_cross_session', title: 'Cross Session', version: productVersion });
 
 export function isRoot(thread) {
   return !thread.parentThreadId && !(typeof thread.source === 'object' && thread.source && 'subAgent' in thread.source);
@@ -31,7 +34,7 @@ export class NativeAdapter {
       const child = spawn(bin.command, [...bin.args, 'app-server', 'proxy', '--sock', this.info.socketPath], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
       const rpc = await connectProxy(child);
       try {
-        await rpc.request('initialize', { clientInfo: { name: 'codex_cross_session', title: 'Cross Session', version: '0.1.0' }, capabilities: { experimentalApi: true } });
+        await rpc.request('initialize', { clientInfo: nativeClientInfo, capabilities: { experimentalApi: true } });
         rpc.write({ method: 'initialized', params: {} });
         this.rpc = rpc;
         return rpc;

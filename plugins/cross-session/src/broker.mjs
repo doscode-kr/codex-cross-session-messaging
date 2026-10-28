@@ -8,6 +8,7 @@ import { NativeAdapter } from './native.mjs';
 import { MessagingService } from './service.mjs';
 import { errorData, CrossSessionError } from './errors.mjs';
 import { brokerDiagnostics } from './diagnostics.mjs';
+import { productVersion } from './version.mjs';
 
 const requestDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
@@ -38,7 +39,7 @@ export async function startBroker({ config = settings(), native = new NativeAdap
       catch { throw new CrossSessionError('INVALID_REQUEST', 'Request body must use valid UTF-8.'); }
       const data = JSON.parse(text);
       if (data.instance !== config.instance) throw new CrossSessionError('INSTANCE_MISMATCH', 'Another messaging state directory uses this port.');
-      if (req.url === '/health') return reply(200, { version: '0.1.0', instance: config.instance, pid: process.pid,
+      if (req.url === '/health') return reply(200, { version: productVersion, instance: config.instance, pid: process.pid,
         ...(data.diagnostics === true ? { diagnostics: brokerDiagnostics(service) } : {}) });
       if (req.url === '/call') return reply(200, await service.call(data.method, data.args, data.sessionId));
       if (req.url === '/hook') return reply(200, await service.hook(data.input, data.projectRoot));
