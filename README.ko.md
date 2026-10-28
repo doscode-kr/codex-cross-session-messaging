@@ -151,6 +151,7 @@ Git worktree는 공통 Git 폴더로 프로젝트를 구분합니다.
 
 완료 판단 지침과 한도는 [작업 상태와 선택적 종료 검사](docs/CONTINUATION.ko.md)를 확인하세요.
 저장한 인계를 새 세션에 전달하는 방법은 [세션 체이닝](docs/CHAINING.ko.md)에 있습니다.
+신뢰한 SessionStart 훅은 같은 세션의 재개·압축 때 [프로젝트 지침](docs/PROJECT_GUIDANCE.ko.md)도 다시 읽어 넣습니다.
 
 MCP 도구 결과는 기본으로 짧은 문장을 표시합니다.
 전체 결과는 `structuredContent`에 포함됩니다.
