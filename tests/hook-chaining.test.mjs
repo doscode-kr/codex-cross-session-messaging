@@ -53,8 +53,57 @@ test('ticket denials never restore source context', async t => {
     const result = await runChainingHook(input, { CROSS_SESSION_CHAIN_TICKET: 'ticket' }, { chaining: {
       claimTicket: async () => ({ status }), restore: () => assert.fail('denied ticket must not restore')
     } });
-    assert.deepEqual(result, { status: 'rejected', ticket_status: status });
+    assert.deepEqual(result, { status: 'rejected', reason: 'CHAINING_TICKET_REJECTED', ticket_status: status,
+      lifecycle: 'unknown', relationship: { receiving_session_id: owner } });
   }
+});
+
+test('missing storage is not a failed restore unless an explicit ticket requires it', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart', source: 'startup' };
+  const env = { ...process.env, CROSS_SESSION_HOME: join(temporary(t), 'absent') };
+  delete env.CROSS_SESSION_CHAIN_TICKET;
+  const normal = await runChainingHook(input, env);
+  assert.equal(normal.status, 'unbound');
+  assert.equal(normal.reason, 'STORAGE_NOT_INITIALIZED');
+  assert.equal(normal.lifecycle, 'startup');
+  assert.equal(normal.relationship.receiving_session_id, owner);
+  const expected = await runChainingHook(input, { ...env, CROSS_SESSION_CHAIN_TICKET: 'private-ticket' });
+  assert.equal(expected.status, 'rejected');
+  assert.equal(expected.reason, 'CHAINING_TICKET_STORE_MISSING');
+  assert.ok(!JSON.stringify(expected).includes('private-ticket'));
+  const invalid = await runChainingHook({ ...input, session_id: 'not-a-uuid' }, env);
+  assert.equal(invalid.status, 'rejected');
+  assert.equal(invalid.reason, 'CHAINING_INVALID_SESSION');
+  assert.equal(invalid.relationship, undefined);
+});
+
+test('restore failure retains only verified receiver identity and lifecycle', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart', source: 'resume' };
+  const result = await runChainingHook(input, {}, { chaining: {
+    restore: async () => { throw Object.assign(Error('private checkpoint content'), { code: 'CHAINING_UNAVAILABLE' }); }
+  } });
+  assert.deepEqual(result, { status: 'storage_error', reason: 'CHAINING_UNAVAILABLE', lifecycle: 'resume',
+    relationship: { receiving_session_id: owner } });
+});
+
+test('resume without a binding reports absence without inventing a recovery failure', async t => {
+  const input = { ...fixture(t), hook_event_name: 'SessionStart', source: 'resume' };
+  const result = await runChainingHook(input, {}, { chaining: {
+    restore: async () => ({ status: 'unbound', reason: 'NO_BINDING', relationship: { receiving_session_id: owner } })
+  } });
+  assert.equal(result.status, 'unbound');
+  assert.equal(result.reason, 'NO_BINDING');
+  assert.equal(result.lifecycle, 'resume');
+  assert.match(result.context, /"reason":"NO_BINDING"/);
+});
+
+test('context formatting failure carries its reason outside the rendered context', async t => {
+  const result = await runChainingHook({ ...fixture(t), hook_event_name: 'SessionStart' }, {}, { chaining: {
+    restore: async () => ({ status: 'restored', reason: 'CHECKPOINT_LOADED', path: 'x'.repeat(9000) })
+  } });
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, 'CHAINING_CONTEXT_TOO_LARGE');
+  assert.equal(result.confirmation, undefined);
 });
 
 test('SessionStart always displays attachment and status even when the broker is unavailable', async t => {

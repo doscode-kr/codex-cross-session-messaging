@@ -153,6 +153,19 @@ test('all tool summaries keep delivery, receipt, leadership, and idle states sep
   }
 });
 
+test('message summaries name every observed and unobserved lifecycle stage', async () => {
+  const stages = {
+    submission: 'recorded', targetCodex: 'accepted', recipientDisplay: 'unknown',
+    recipientReceipt: 'unconfirmed', taskCompletion: 'unreported'
+  };
+  const result = await handleMcp(call('send_message', { to: 'b', message: 'payload', detail: false }), { async call() {
+    return { messageId: 'm', status: 'accepted', acknowledged: false, taskCompleted: false, stages, idleNotification: 'unknown', reused: true };
+  } });
+  assert.match(result.content[0].text, /Stages: recorded; Codex accepted; display unknown; receipt unconfirmed; completion unreported/);
+  assert.match(result.content[0].text, /idle notification unknown/);
+  assert.match(result.content[0].text, /Existing receipt reused; no second native submission/);
+});
+
 test('history cursors reach the broker and remain available in short and detailed MCP results', async () => {
   const data = { messages: [{ id: 'older', from: { id: 'b' }, to: { id: 'a' }, status: 'uncertain', text: 'body' }], nextCursor: 'older' };
   const client = { async call(name, args, session) {

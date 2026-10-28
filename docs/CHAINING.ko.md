@@ -131,6 +131,35 @@ hook 입력과 대화 기록의 UUID가 다르면 거부합니다.
 
 일반 세션의 SessionStart에는 `Cross-session chaining hook attached.`라는 줄이 붙습니다.
 이어지는 상태는 `unbound`, `bound_no_notes`, `restored`, `rejected`, `unlinked`, `storage_error` 중 하나입니다.
+`reason`에는 짧은 이유가 붙습니다.
+
+| 상태와 이유 | 의미 |
+|---|---|
+| `unbound` / `STORAGE_NOT_INITIALIZED` | 메시지 폴더가 없습니다. 인계 자료를 선택하지 않았습니다. |
+| `unbound` / `NO_BINDING` | 현재 저장소에 확인된 세션의 연결 기록이 없습니다. |
+| `bound_no_notes` / `NO_CHECKPOINT` | 연결은 있지만 저장한 체크포인트가 없습니다. |
+| `restored` / `CHECKPOINT_LOADED` | 선택한 체크포인트를 검사하고 출력할 자료를 준비했습니다. |
+| `unlinked` / `EXPLICITLY_UNLINKED` | 명시적인 연결 해제 기록이 자동 복원을 막습니다. |
+| `rejected` / `CHAINING_TICKET_STORE_MISSING` | 지정한 티켓에 필요한 저장소가 없습니다. |
+| `rejected` / `CHAINING_TICKET_REJECTED` | `ticket_status`에 티켓을 거절한 이유가 있습니다. |
+| `rejected` 또는 `storage_error` / 그 밖의 `CHAINING_*` 코드 | 세션 확인, 문맥 준비, 저장소 검사 중 문제가 생겼습니다. |
+
+`lifecycle`은 호스트가 전달한 시작, 재개, 초기화, 문맥 압축 이벤트를 기록합니다.
+이 이벤트만으로 이전 연결이 있었다고 판단하지 않습니다.
+복구할 연결이나 티켓을 명시하지 않은 새 세션은 `unbound`여도 정상입니다.
+저장소가 없다는 사실만으로 삭제된 이력을 추정할 수는 없습니다.
+기존 연결의 체크포인트가 없거나 손상되면 오류를 반환합니다.
+이 오류를 `unbound`로 숨기지 않습니다.
+
+`relationship.receiving_session_id`는 현재 수신 세션입니다.
+`source_session_id`는 연결할 때 고정한 원본 세션입니다.
+`checkpoint_session_id`는 이번에 선택한 체크포인트의 소유 세션입니다.
+`selected_from`이 `pinned_source`이면 원본의 인계를 선택했습니다.
+`own_latest`이면 현재 세션이 이후에 저장한 진행 내용을 선택했습니다.
+연결, 체인, 체크포인트 ID로 두 세션의 관계를 추적할 수 있습니다.
+진단 기록에 대화 전문을 복사할 필요는 없습니다.
+`restored`는 모델이 읽었거나 작업을 끝냈다는 증거가 아닙니다.
+작업 상태에는 원래 요청, 보고한 결과, 남은 체크리스트를 나누어 기록합니다.
 Codex가 hook을 실행하지 않으면 부착 줄도 없습니다.
 다음 읽기 전용 명령으로 설치된 hook과 저장소 사용량을 확인합니다.
 
@@ -145,6 +174,16 @@ node plugins/cross-session/src/cli.mjs chain doctor
 실제 실행 여부는 부착 줄과 체크포인트 상태로 확인합니다.
 업데이트로 새 hook 이벤트를 추가하면 사용자가 다시 신뢰를 검토해야 합니다.
 이번 변경은 `PreCompact`를 추가합니다.
+
+플러그인은 SessionStart에만 규칙과 인계 자료를 넣습니다.
+플러그인의 UserPromptSubmit 훅은 세션 등록을 갱신하며 안내문을 출력하지 않습니다.
+프로젝트의 작업 규칙은 해당 프로젝트의 훅이 담당합니다.
+플러그인은 다른 훅의 출력을 지우거나 바꾸지 않습니다.
+프로젝트 안내가 반복되면 훅 등록과 안내문을 출력하는 명령을 함께 확인합니다.
+프로젝트 훅은 SessionStart에 전체 규칙을 전달할 수 있습니다.
+같은 세션의 후속 입력에는 바뀐 항목만 전달할 수 있습니다.
+문맥 복구나 압축 뒤에는 전체 규칙을 다시 전달해야 합니다.
+표시 기록으로 메시지 수신이나 작업 완료를 판정해서는 안 됩니다.
 기존 hook의 명령 문자열과 배열 위치는 유지합니다.
 
 복원 내용에는 신뢰하지 않는 데이터라는 표시를 넣습니다.

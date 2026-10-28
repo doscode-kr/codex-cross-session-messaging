@@ -43,8 +43,15 @@ function label(value, limit = 160) {
   const text = String(value ?? 'unknown');
   return JSON.stringify(text.length > limit ? text.slice(0, limit) + '…' : text);
 }
+function stageSummary(stages = {}) {
+  return `${stages.submission ?? 'unknown'}; Codex ${stages.targetCodex ?? 'unknown'}; display ${stages.recipientDisplay ?? 'unknown'}; receipt ${stages.recipientReceipt ?? 'unconfirmed'}; completion ${stages.taskCompletion ?? 'unreported'}`;
+}
 function messageSummary(message) {
-  return `${message.id}: ${label(message.from?.name ?? message.from?.id)} -> ${label(message.to?.name ?? message.to?.id)}; ${message.status}; ${message.acknowledgedAt ? 'receipt confirmed' : 'receipt not confirmed'}; ${label(message.text)}`;
+  return `${message.id}: ${label(message.from?.name ?? message.from?.id)} -> ${label(message.to?.name ?? message.to?.id)}; ${message.status}; ${message.acknowledgedAt ? 'receipt confirmed' : 'receipt not confirmed'}; ${stageSummary(message.stages)}; idle notification ${message.idleNotification ?? 'unknown'}; ${label(message.text)}`;
+}
+function chainSummary(result) {
+  const relationship = result.relationship ?? {};
+  return `Chain: ${result.status}; reason: ${result.reason ?? 'unknown'}; receiving: ${relationship.receiving_session_id ?? 'none'}; source: ${relationship.source_session_id ?? 'none'}; binding: ${relationship.binding_id ?? 'none'}; ID: ${relationship.chain_id ?? result.binding?.chain_id ?? result.tombstone?.chain_id ?? 'none'}; checkpoint: ${relationship.checkpoint_id ?? result.binding?.latest_checkpoint_id ?? result.binding?.pinned_checkpoint_id ?? 'none'}; checkpoint owner: ${relationship.checkpoint_session_id ?? 'none'}; selected from: ${relationship.selected_from ?? 'none'}.${result.tombstone ? ` Unlink record: ${result.tombstone.id}.` : ''} Saved reports are not user approval.`;
 }
 export function summarizeResult(name, result) {
   let summary;
@@ -52,7 +59,7 @@ export function summarizeResult(name, result) {
     case 'link_chain':
     case 'get_chain':
     case 'unlink_chain':
-    case 'relink_chain': summary = `Chain: ${result.status}; ID: ${label(result.binding?.chain_id ?? result.tombstone?.chain_id ?? 'none', 80)}; checkpoint: ${result.binding?.latest_checkpoint_id ?? result.binding?.pinned_checkpoint_id ?? 'none'}.${result.tombstone ? ` Unlink record: ${result.tombstone.id}.` : ''} Saved reports are not user approval.`; break;
+    case 'relink_chain': summary = chainSummary(result); break;
     case 'get_work_state':
     case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.${result.checklist_summary ? ` Checklist: ${result.checklist_summary.completed}/${result.checklist_summary.total} complete; ${result.checklist_summary.blocked} blocked. User decision required: ${result.checklist_summary.user_decision_required}.${result.checklist_summary.user_decision_required ? ' Ask the user for a decision; do not retry exhausted items.' : ''}` : ''}`; break;
     case 'list_agents':
@@ -61,11 +68,11 @@ export function summarizeResult(name, result) {
       break;
     case 'register_session': summary = `Session ${result.id}: ${label(result.name, 120)}; ${result.role}.`; break;
     case 'send_message':
-    case 'reply': summary = `Message ${result.messageId}: ${result.status}. ${result.acknowledged === true ? 'Receipt confirmed. Task completion is not confirmed.' : 'Receipt and task completion are not confirmed.'}${result.subscriptionId ? ` Idle subscription: ${label(result.subscriptionId, 200)}.` : ''}`; break;
+    case 'reply': summary = `Message ${result.messageId}: ${result.status}. ${result.acknowledged === true ? 'Receipt confirmed. Task completion is not confirmed.' : 'Receipt and task completion are not confirmed.'} Stages: ${stageSummary(result.stages)}; idle notification ${result.idleNotification ?? 'unknown'}.${result.reused ? ' Existing receipt reused; no second native submission.' : ''}${result.subscriptionId ? ` Idle subscription: ${label(result.subscriptionId, 200)}.` : ''}`; break;
     case 'read_messages': summary = [`${result.messages.length} messages.`, ...result.messages.map(messageSummary),
       ...(result.nextCursor ? [`Older messages: before_message_id: ${label(result.nextCursor, 200)}.`] : [])].join('\n'); break;
     case 'get_message': summary = messageSummary(result); break;
-    case 'acknowledge': summary = `Message ${result.id}: receipt confirmed. Task completion is not confirmed.`; break;
+    case 'acknowledge': summary = `Message ${result.id}: receipt confirmed. Task completion is not confirmed. Stages: ${stageSummary(result.stages)}; idle notification ${result.idleNotification ?? 'unknown'}.`; break;
     case 'claim_leader':
     case 'release_leader':
     case 'transfer_leader': summary = `Leader: ${result.leader ?? 'none'}.`; break;

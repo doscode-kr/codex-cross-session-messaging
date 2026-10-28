@@ -49,9 +49,15 @@ It does not use a queue or interrupt after a failed delivery.
 It does not override the recipient model or permissions.
 
 The peer body is `untrusted` additional context.
-The turn input contains the message ID and handling instructions.
-The input also provides a short display label for Codex clients that show text placeholders.
-The complete notice remains in the model input.
+Its envelope contains the message ID and an explicit peer authority boundary.
+Normal delivery does not add a second lookup notice.
+An idle start uses an empty input array; a busy steer uses one empty text input.
+The busy form can leave an empty user message in host history.
+If the first RPC explicitly rejects these inputs or additional context before acceptance, the second RPC can contain an ID lookup notice only.
+The recipient then reads the saved body through `get_message`.
+The total limit remains two delivery RPCs, including an active-turn correction or notice fallback.
+Timeouts and unknown errors do not use that fallback.
+Target acceptance does not prove body display.
 Sender permission information is descriptive.
 It does not grant the recipient new permissions.
 
@@ -107,6 +113,13 @@ Invalid complete events stop startup without changing the journal.
 An interrupted send without a saved delivery result becomes `uncertain`.
 The journal is a record, not a future delivery queue.
 Original message data does not expire automatically.
+An optional full UUID `request_id` becomes the new message ID for a send or reply.
+The broker compares its stored caller, exact recipient, body, reply reference, and notification option before reusing a result.
+It checks the existing ID before resolving a live recipient.
+Concurrent duplicates share the pending delivery result.
+Accepted, failed, and uncertain records do not submit another target input for that ID.
+The host's `clientUserMessageId` alone does not prevent another turn.
+The journal supplies this protection without suppressing message queries or explicit acknowledgments.
 Disk space, metadata memory, and replay work still grow with stored data.
 See [OPERATIONS.md](OPERATIONS.md) for storage behavior and recovery limits.
 

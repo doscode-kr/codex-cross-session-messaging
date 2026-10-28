@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+- Deliver peer bodies without a second lookup notice, with a bounded fallback for explicit input rejection.
+- Add `request_id` to recover send and reply receipts without another native submission.
+- Separate storage, target acceptance, recipient receipt, and unreported task completion.
+- Preserve unknown idle notification outcomes, including older journal records.
+- Add handoff reason codes and verified session/checkpoint relationships.
+- Document the separate responsibilities of project hooks and plugin hooks.
+
 - Add session chaining with exact UUID bindings and immutable checkpoints.
 - Reject `chain launch` with `CHAINING_LAUNCH_UNSUPPORTED`: the shared daemon cannot receive the child-only ticket.
 - Restore untrusted handoffs from existing work-state reports and bounded automatic records.
@@ -59,7 +66,6 @@
 - Keep MCP and native RPC connections available after malformed input.
   Clear pending request state when a send fails synchronously.
 - Close the journal and listener when broker startup recovery fails.
-- Provide a short peer message display label while retaining the full untrusted context.
 - Stop session discovery when the daemon repeats a page cursor.
   Read overlapping session IDs only once per discovery.
 - Move session and idle history queries outside serial state updates.

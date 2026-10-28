@@ -74,34 +74,44 @@ export async function runChainingHook(input, env = process.env, dependencies = {
   const event = input.hook_event_name;
   if (!['SessionStart', 'Stop', 'PreCompact', 'SessionEnd'].includes(event)) return null;
   if (!dependencies.chaining && !chainingChild) return runChainingChild({ input }, env);
+  const lifecycle = ['startup', 'resume', 'clear', 'compact'].includes(input.source) ? input.source : 'unknown';
+  let verifiedSession;
   try {
+    const transcript = (dependencies.readTranscript ?? readChainingTranscript)(input);
+    verifiedSession = transcript.sessionId;
     let chaining = dependencies.chaining;
     if (!chaining) {
       let root;
       try { root = settings(env, { create: false }).root; }
-      catch (error) { if (error.code === 'ENOENT') return { status: 'unbound' }; throw error; }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        const expectsTicket = event === 'SessionStart' && env.CROSS_SESSION_CHAIN_TICKET !== undefined;
+        return { status: expectsTicket ? 'rejected' : 'unbound', reason: expectsTicket ? 'CHAINING_TICKET_STORE_MISSING' : 'STORAGE_NOT_INITIALIZED',
+          ...(event === 'SessionStart' ? { lifecycle } : {}), relationship: { receiving_session_id: transcript.sessionId } };
+      }
       const { Chaining } = await import('./chaining.mjs');
       chaining = new Chaining(root, dependencies.lockOwnerId ? { lock_owner_id: dependencies.lockOwnerId } : {});
     }
-    const transcript = (dependencies.readTranscript ?? readChainingTranscript)(input);
     if (event === 'SessionStart') {
       let ticket;
       if (env.CROSS_SESSION_CHAIN_TICKET !== undefined) {
         ticket = await chaining.claimTicket(transcript.sessionId, env.CROSS_SESSION_CHAIN_TICKET);
-        if (!['claimed', 'owner_resume'].includes(ticket.status)) return { status: 'rejected', ticket_status: ticket.status };
+        if (!['claimed', 'owner_resume'].includes(ticket.status)) return { status: 'rejected', reason: 'CHAINING_TICKET_REJECTED', ticket_status: ticket.status,
+          lifecycle, relationship: { receiving_session_id: transcript.sessionId } };
       }
-      const restored = { ...await chaining.restore(transcript.sessionId), ...(ticket ? { ticket_status: ticket.status } : {}) };
+      const restored = { ...await chaining.restore(transcript.sessionId), lifecycle, ...(ticket ? { ticket_status: ticket.status } : {}) };
       const prepared = prepareChainingContext(restored);
       const confirmation = prepared.status === 'restored' && restored.binding?.restore_pending === true
         ? { owner: transcript.sessionId, expected_binding_id: restored.binding.id, expected_checkpoint_id: restored.checkpoint?.id } : null;
-      return { ...restored, status: prepared.status, context: prepared.context, ...(confirmation ? { confirmation } : {}) };
+      return { ...restored, status: prepared.status, reason: prepared.reason, context: prepared.context, ...(confirmation ? { confirmation } : {}) };
     }
     // Do not run Git subprocesses or retention at session end.
     const git = event === 'SessionEnd' ? null : await (dependencies.readGit ?? readChainingGit)(input.cwd);
     return await chaining.checkpoint(transcript.sessionId, { event, automatic: { messages: transcript.messages, git }, skip_cleanup: event === 'SessionEnd' });
   } catch (error) {
     const identity = /^(CHAINING_(INVALID_SESSION|TRANSCRIPT_))/.test(error.code ?? '');
-    return { status: identity ? 'rejected' : 'storage_error', reason: identity || chainingErrors.has(error.code) ? error.code : 'CHAINING_UNAVAILABLE' };
+    return { status: identity ? 'rejected' : 'storage_error', reason: identity || chainingErrors.has(error.code) ? error.code : 'CHAINING_UNAVAILABLE',
+      ...(event === 'SessionStart' ? { lifecycle } : {}), ...(verifiedSession ? { relationship: { receiving_session_id: verifiedSession } } : {}) };
   }
 }
 

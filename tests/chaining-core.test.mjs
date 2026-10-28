@@ -49,6 +49,28 @@ test('reads do not create chaining storage and an unbound session does not save'
   assert.equal(readdirSync(chaining.store.checkpoints).length, 0);
 });
 
+test('handoff reasons and provenance distinguish the pinned source from current progress', async t => {
+  const chaining = new Chaining(temporary(t));
+  assert.equal((await chaining.status(a)).reason, 'NO_BINDING');
+  assert.equal((await chaining.bind(a, { chain_id: 'work' })).reason, 'NO_CHECKPOINT');
+  const source = await save(chaining, a);
+  const linked = await chaining.bind(b, { chain_id: 'work', source_session_id: a });
+  const first = await chaining.restore(b);
+  assert.equal(first.reason, 'CHECKPOINT_LOADED');
+  assert.deepEqual(first.relationship, { receiving_session_id: b, source_session_id: a,
+    binding_id: linked.binding.id, chain_id: 'work', checkpoint_id: source.checkpoint_id,
+    checkpoint_session_id: a, selected_from: 'pinned_source' });
+  await confirm(chaining, b);
+  const own = await save(chaining, b);
+  const resumed = await chaining.restore(b);
+  assert.equal(resumed.relationship.source_session_id, a);
+  assert.equal(resumed.relationship.checkpoint_session_id, b);
+  assert.equal(resumed.relationship.checkpoint_id, own.checkpoint_id);
+  assert.equal(resumed.relationship.selected_from, 'own_latest');
+  const unlinked = await chaining.unlink(b, { expected_chain_id: 'work', expected_checkpoint_id: own.checkpoint_id });
+  assert.equal(unlinked.reason, 'EXPLICITLY_UNLINKED');
+});
+
 test('source links require a saved checkpoint and cannot move a live binding', async t => {
   const chaining = new Chaining(temporary(t));
   await chaining.bind(a, { chain_id: 'one' });

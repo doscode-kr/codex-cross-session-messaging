@@ -38,7 +38,15 @@ export class Chaining {
   report(state, owner) {
     const binding = state.bindings[owner] ?? null, tombstone = state.tombstones[owner] ?? null;
     if (binding) this.verifyBinding(binding);
-    return structuredClone({ status: tombstone ? 'unlinked' : !binding ? 'unbound' : currentCheckpoint(binding) ? 'bound' : 'bound_no_notes', binding, tombstone });
+    const status = tombstone ? 'unlinked' : !binding ? 'unbound' : currentCheckpoint(binding) ? 'bound' : 'bound_no_notes';
+    const reason = { unlinked: 'EXPLICITLY_UNLINKED', unbound: 'NO_BINDING', bound: 'CHECKPOINT_AVAILABLE', bound_no_notes: 'NO_CHECKPOINT' }[status];
+    return structuredClone({ status, reason, relationship: {
+      receiving_session_id: owner, source_session_id: binding?.source_session_id ?? null,
+      binding_id: binding?.id ?? null, chain_id: binding?.chain_id ?? tombstone?.chain_id ?? null,
+      ...(binding && currentCheckpoint(binding) ? { checkpoint_id: currentCheckpoint(binding),
+        checkpoint_session_id: binding.latest_checkpoint_id ? owner : binding.source_session_id,
+        selected_from: binding.latest_checkpoint_id ? 'own_latest' : 'pinned_source' } : {})
+    }, binding, tombstone });
   }
   source(state, owner, chainId, sourceId) {
     if (sourceId === undefined || sourceId === null) return { source_session_id: null, pinned_checkpoint_id: null };
@@ -145,7 +153,11 @@ export class Chaining {
     const result = this.report(this.store.read(), owner);
     if (result.status !== 'bound') return { ...result, checkpoint: null, path: null };
     const id = currentCheckpoint(result.binding);
-    return { ...result, status: 'restored', checkpoint: this.store.readCheckpoint(id), path: this.store.checkpointPath(id) };
+    const checkpoint = this.store.readCheckpoint(id);
+    return { ...result, status: 'restored', reason: 'CHECKPOINT_LOADED', relationship: {
+      ...result.relationship, checkpoint_id: id, checkpoint_session_id: checkpoint.session_id,
+      selected_from: result.binding.latest_checkpoint_id ? 'own_latest' : 'pinned_source'
+    }, checkpoint, path: this.store.checkpointPath(id) };
   }
   async confirmRestore(owner, args) {
     session(owner); argsOnly(args, ['expected_binding_id', 'expected_checkpoint_id']);
@@ -172,8 +184,8 @@ export class Chaining {
     if (!['Stop', 'PreCompact', 'SessionEnd'].includes(args.event) || (args.skip_cleanup !== undefined && typeof args.skip_cleanup !== 'boolean')) throw invalid();
     return this.store.transaction(state => {
       const binding = state.bindings[owner];
-      if (state.tombstones[owner]) return { status: 'unlinked' };
-      if (!binding) return { status: 'unbound' };
+      if (state.tombstones[owner]) return { status: 'unlinked', reason: 'EXPLICITLY_UNLINKED' };
+      if (!binding) return { status: 'unbound', reason: 'NO_BINDING' };
       this.verifyBinding(binding);
       if (binding.restore_pending) return { status: 'awaiting_restore' };
       const value = { version: 1, id: randomUUID(), session_id: owner, chain_id: binding.chain_id, event: args.event,

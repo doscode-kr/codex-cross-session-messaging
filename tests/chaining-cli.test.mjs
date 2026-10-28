@@ -38,7 +38,8 @@ test('chain CLI validates options and UUIDs before it creates state', async t =>
       .map(child => ['launch', '--chain-id', 'work', '--source-session-id', A, '--', ...child])
   ]) await assert.rejects(runChainingCli(args, { env }), { code: 'INVALID_ARGUMENT' });
   assert.equal(existsSync(home), false);
-  assert.deepEqual(await runChainingCli(['status'], { env }), { status: 'unbound', binding: null, tombstone: null });
+  assert.deepEqual(await runChainingCli(['status'], { env }), { status: 'unbound', reason: 'STORAGE_NOT_INITIALIZED',
+    relationship: { receiving_session_id: A }, binding: null, tombstone: null });
   assert.equal(existsSync(home), false);
 });
 

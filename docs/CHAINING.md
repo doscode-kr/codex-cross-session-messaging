@@ -127,6 +127,33 @@ It skips broken JSON lines without skipping identity checks.
 
 Every root SessionStart adds `Cross-session chaining hook attached.`
 The context reports `unbound`, `bound_no_notes`, `restored`, `rejected`, `unlinked`, or `storage_error`.
+It also includes a short `reason`:
+
+| Status and reason | Meaning |
+|---|---|
+| `unbound` / `STORAGE_NOT_INITIALIZED` | The message directory does not exist. No handoff was selected. |
+| `unbound` / `NO_BINDING` | The verified session has no binding in the current store. |
+| `bound_no_notes` / `NO_CHECKPOINT` | The binding exists but has no checkpoint. |
+| `restored` / `CHECKPOINT_LOADED` | The selected checkpoint passed storage checks and was prepared for output. |
+| `unlinked` / `EXPLICITLY_UNLINKED` | An explicit unlink record prevents automatic restoration. |
+| `rejected` / `CHAINING_TICKET_STORE_MISSING` | An explicit ticket needs a store that is absent. |
+| `rejected` / `CHAINING_TICKET_REJECTED` | `ticket_status` explains why the ticket was refused. |
+| `rejected` or `storage_error` / other `CHAINING_*` code | Identity, context preparation, or storage checks failed. |
+
+`lifecycle` records the host's startup, resume, clear, or compact event when supplied.
+This event does not prove that a previous binding existed.
+An unbound new session is normal unless an explicit recovery request requires a binding or ticket.
+The plugin cannot infer deleted history from an absent store.
+A missing or corrupt checkpoint of an existing binding fails closed; it does not become `unbound`.
+
+`relationship.receiving_session_id` identifies the current session.
+`source_session_id` identifies the source fixed by the binding.
+`checkpoint_session_id` identifies the owner of the selected checkpoint.
+`selected_from` is `pinned_source` for the source handoff or `own_latest` for later progress.
+The binding, chain, and checkpoint IDs connect these records without copying conversation text into diagnostics.
+`restored` is not proof of model receipt or work completion.
+Keep the original request, reported results, and remaining checklist items separate in the work-state report.
+
 The attachment line is absent when Codex does not run the hook.
 Run this read-only command to inspect the installed hooks and store usage:
 
@@ -141,6 +168,15 @@ It is not proof that a hook ran.
 Use the attachment line and checkpoint status as execution evidence.
 New hook events require another trust review after an update.
 This release adds `PreCompact` and preserves the existing hook command strings and positions.
+
+The plugin adds its rules and handoff only at SessionStart.
+Its UserPromptSubmit hook updates session registration and does not add guidance text.
+Project task rules come from the project's own hooks.
+The plugin does not remove or rewrite another hook's output.
+If project guidance repeats, inspect both hook registrations and the command that writes that guidance.
+A project hook can send full rules on SessionStart and changes on later inputs in the same session.
+It must send full rules again after context restoration or compaction.
+A display cache must not imply message receipt or work completion.
 
 Restored data is explicitly marked as untrusted.
 Structured handoffs are model reports, not independent verification.

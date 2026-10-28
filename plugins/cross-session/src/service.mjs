@@ -7,6 +7,25 @@ import { Chaining } from './chaining.mjs';
 import { validateTool } from './mcp.mjs';
 
 const pendingDelivery = Symbol('pendingDelivery');
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requestId(value) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !uuidPattern.test(value)) throw new CrossSessionError('INVALID_ARGUMENT', 'request_id must be a full UUID.');
+  return value.toLowerCase();
+}
+
+function messageStages(message) {
+  const targetCodex = message.status === 'accepted' ? 'accepted' : message.status === 'failed' ? 'rejected' :
+    message.status === 'uncertain' ? 'unknown' : 'pending';
+  return {
+    submission: 'recorded',
+    targetCodex,
+    recipientDisplay: 'unknown',
+    recipientReceipt: message.acknowledgedAt ? 'confirmed' : 'unconfirmed',
+    taskCompletion: 'unreported'
+  };
+}
 
 function sameFolder(a, b) {
   if (!a || !b) return false;
@@ -17,6 +36,7 @@ export class MessagingService {
   constructor(store, native, workState = new WorkState(dirname(store.path))) {
     this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve();
     this.deliveries = new Set();
+    this.pendingMessages = new Map();
     this.recipients = new Map();
     this.idleChecks = new Map();
     this.refreshing = null;
@@ -133,19 +153,30 @@ export class MessagingService {
         }
         case 'send_message': {
           if (args.notify_when_idle !== undefined && typeof args.notify_when_idle !== 'boolean') throw new CrossSessionError('INVALID_ARGUMENT', 'notify_when_idle must be a boolean.');
-          const recipient = this.target(args.to);
+          const id = requestId(args.request_id);
+          const text = requireText(args.message, 'message');
+          const to = requireText(args.to, 'to', 200);
           let replyTo;
           if (args.reply_to !== undefined) {
-            const original = this.store.messages.get(requireText(args.reply_to, 'reply_to', 200));
-            if (!original || original.to.id !== caller.id || original.from.id !== recipient.id) throw new CrossSessionError('INVALID_REPLY', 'A reply must target the sender of a message addressed to this session.');
-            replyTo = original.id;
+            replyTo = requireText(args.reply_to, 'reply_to', 200);
           }
-          return this.send(caller, recipient, requireText(args.message, 'message'), { replyTo, notifyIdle: args.notify_when_idle === true });
+          if (id && this.store.messages.has(id)) {
+            return this.reuse(id, caller, { to, text, replyTo, notifyIdle: args.notify_when_idle === true });
+          }
+          const recipient = this.target(to);
+          if (replyTo !== undefined) {
+            const original = this.store.messages.get(replyTo);
+            if (!original || original.to.id !== caller.id || original.from.id !== recipient.id) throw new CrossSessionError('INVALID_REPLY', 'A reply must target the sender of a message addressed to this session.');
+          }
+          return this.send(caller, recipient, text, { id, replyTo, notifyIdle: args.notify_when_idle === true });
         }
         case 'reply': {
           const original = this.store.messages.get(requireText(args.message_id, 'message_id', 200));
           if (!original || original.to.id !== caller.id) throw new CrossSessionError('MESSAGE_NOT_FOUND', 'This message is not addressed to the caller.');
-          return this.send(caller, this.target(original.from.id), requireText(args.message, 'message'), { replyTo: original.id });
+          const id = requestId(args.request_id);
+          const text = requireText(args.message, 'message');
+          if (id && this.store.messages.has(id)) return this.reuse(id, caller, { to: original.from.id, text, replyTo: original.id, notifyIdle: false });
+          return this.send(caller, this.target(original.from.id), text, { id, replyTo: original.id });
         }
         case 'read_messages': {
           const limit = args.limit ?? 20;
@@ -169,18 +200,18 @@ export class MessagingService {
           }
           const hasOlder = messages.length > limit;
           if (hasOlder) messages.shift();
-          return { messages, nextCursor: hasOlder ? messages[0].id : null };
+          return { messages: messages.map(message => this.publicMessage(message)), nextCursor: hasOlder ? messages[0].id : null };
         }
         case 'acknowledge': {
           const message = this.store.messages.get(requireText(args.message_id, 'message_id', 200));
           if (!message || message.to.id !== caller.id) throw new CrossSessionError('MESSAGE_NOT_FOUND', 'Only the recipient can acknowledge this message.');
           if (!message.acknowledgedAt) this.store.record('ack', { id: message.id, at: new Date().toISOString() });
-          return { id: message.id, acknowledgedAt: message.acknowledgedAt, taskCompleted: false };
+          return { id: message.id, acknowledgedAt: message.acknowledgedAt, taskCompleted: false, stages: messageStages(message), idleNotification: this.idleNotification(message) };
         }
         case 'get_message': {
           const message = this.store.messages.get(requireText(args.message_id, 'message_id', 200));
           if (!message || ![message.from.id, message.to.id].includes(caller.id)) throw new CrossSessionError('MESSAGE_NOT_FOUND', 'Only the sender and recipient can read this message.');
-          return message;
+          return this.publicMessage(message);
         }
         case 'notify_when_idle': {
           const recipient = this.target(args.to);
@@ -223,18 +254,67 @@ export class MessagingService {
     });
     return result?.[pendingDelivery] ?? result;
   }
-  send(from, to, text, { replyTo, notifyIdle = false, kind = 'message' } = {}) {
+  publicMessage(message) {
+    const result = Object.defineProperties({}, Object.getOwnPropertyDescriptors(message));
+    result.stages = messageStages(message);
+    result.idleNotification = this.idleNotification(message);
+    return result;
+  }
+  idleNotification(message) {
+    if ([...this.store.subscriptions.values()].some(value => value.messageId === message.id)) return 'registered';
+    if (message.notifyIdle === false) return 'not_requested';
+    return 'unknown';
+  }
+  receipt(message, extra = {}) {
+    const subscription = [...this.store.subscriptions.values()].find(value => value.messageId === message.id);
+    return {
+      messageId: message.id,
+      status: message.status,
+      ...(message.delivery ? { delivery: message.delivery } : {}),
+      acknowledged: Boolean(message.acknowledgedAt),
+      taskCompleted: false,
+      stages: messageStages(message),
+      idleNotification: this.idleNotification(message),
+      ...(subscription ? { subscriptionId: subscription.id } : {}),
+      ...extra
+    };
+  }
+  reuse(id, caller, expected) {
+    const message = this.store.messages.get(id);
+    // Do not reveal which field belongs to another request or caller.
+    if (!message || message.from.id !== caller.id || message.to.id !== expected.to || message.replyTo !== expected.replyTo ||
+        (message.notifyIdle === true) !== expected.notifyIdle) {
+      throw new CrossSessionError('REQUEST_ID_CONFLICT', 'request_id already belongs to different request data or a different caller. Use a new UUID.');
+    }
+    let sameText;
+    try { sameText = message.text === expected.text; }
+    catch {
+      throw new CrossSessionError('STORE_UNAVAILABLE', 'The message journal body could not be checked. Stop the broker and check storage before retrying.');
+    }
+    if (!sameText) throw new CrossSessionError('REQUEST_ID_CONFLICT', 'request_id already belongs to different request data or a different caller. Use a new UUID.');
+    const pending = this.pendingMessages.get(id);
+    if (pending) return { [pendingDelivery]: pending };
+    if (message.status === 'accepted') return this.receipt(message, { reused: true });
+    const details = { messageId: id, status: message.status, queued: false, reused: true, stages: messageStages(message) };
+    if (message.status === 'failed') {
+      throw new CrossSessionError('DELIVERY_FAILED', 'The existing request was rejected. It was not submitted again. Use a new request_id for a new send.', details);
+    }
+    throw new CrossSessionError('DELIVERY_UNCERTAIN', 'The existing request outcome is unknown. It was not submitted again. Inspect the saved message before any new send.', details);
+  }
+  send(from, to, text, { id = randomUUID(), replyTo, notifyIdle = false, kind = 'message' } = {}) {
     if (from.id === to.id) throw new CrossSessionError('SELF_MESSAGE', 'Select another session.');
-    const message = { id: randomUUID(), kind, from, to, text, createdAt: new Date().toISOString(), status: 'sending', ...(replyTo ? { replyTo } : {}) };
+    const message = { id, kind, from, to, text, createdAt: new Date().toISOString(), status: 'sending', notifyIdle, ...(replyTo ? { replyTo } : {}) };
     this.store.record('message', message);
     // Keep each recipient's submissions in order without blocking other peers.
     // This only waits for a native reply, never for the recipient's turn to end.
     const previous = this.recipients.get(to.id) ?? Promise.resolve();
     const delivery = previous.catch(() => {}).then(() => this.deliver(message, notifyIdle));
+    this.pendingMessages.set(message.id, delivery);
     this.recipients.set(to.id, delivery);
     this.deliveries.add(delivery);
     const finished = () => {
       this.deliveries.delete(delivery);
+      if (this.pendingMessages.get(message.id) === delivery) this.pendingMessages.delete(message.id);
       if (this.recipients.get(to.id) === delivery) this.recipients.delete(to.id);
     };
     delivery.then(finished, finished);
@@ -256,13 +336,15 @@ export class MessagingService {
           subscriptionId = randomUUID();
           this.store.record('subscription', { id: subscriptionId, from: message.from.id, to: message.to.id, sawActive: true, messageId: message.id, turnId: delivery.turnId });
         }
-        return { messageId: message.id, status: 'accepted', delivery, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false, ...(notifyIdle ? { subscriptionId } : {}) };
+        return this.receipt(message, notifyIdle ? { subscriptionId } : {});
       });
     } catch (error) {
       return this.run(() => {
         const storageCode = value => ({ code: value.code ?? 'INTERNAL_ERROR' });
         if (acceptedSaved) throw new CrossSessionError('IDLE_SUBSCRIPTION_UNCERTAIN', 'Codex accepted the message. The broker could not confirm the idle notification subscription. Check the saved message and subscriptions after storage recovery. Do not resend the message.', {
           messageId: message.id, status: 'accepted', delivery, subscriptionId, acknowledged: Boolean(message.acknowledgedAt), taskCompleted: false,
+          stages: { ...messageStages(message), targetCodex: 'accepted' },
+          idleNotification: 'unknown',
           requestOutcome: 'accepted', idleNotificationOutcome: 'unknown', storageError: storageCode(this.store.failure ?? error), queued: false
         });
         const uncertain = submitted && (nativeAccepted || !['NATIVE_REJECTED', 'RECIPIENT_UNAVAILABLE', 'ACTIVE_TURN_NOT_FOUND', 'DAEMON_REQUIRED', 'CODEX_NOT_FOUND'].includes(error.code));
@@ -279,6 +361,7 @@ export class MessagingService {
           journalError ? 'The message journal failed during delivery. Check message history after storage recovery. Do not resend automatically.' : error.message;
         throw new CrossSessionError(code, text, {
           messageId: message.id, requestOutcome: !submitted ? 'not_submitted' : uncertain ? 'unknown' : 'rejected', queued: false,
+          stages: { ...messageStages(message), targetCodex: nativeAccepted ? 'accepted' : uncertain ? 'unknown' : submitted ? 'rejected' : 'pending' },
           ...(nativeAccepted ? { delivery } : journalError ? {} : { nativeError: errorData(error) }), ...(storageError ? { storageError: storageCode(storageError) } : {})
         });
       });
