@@ -50,7 +50,7 @@ Delivery acceptance does not guarantee model understanding or task completion.
    npm run install:global
    ```
 
-5. Open a new Codex CLI session.
+5. Open Codex or resume your saved session.
 6. Review the plugin hooks in `/hooks`.
 7. Trust the hooks after your review.
 
@@ -356,7 +356,7 @@ Read [security and privacy](../SECURITY.md) before you share logs.
    ```
 
 9. Install the new source with `npm run install:global`.
-10. Open new Codex CLI sessions.
+10. Resume your saved Codex CLI sessions.
 11. Review the new hooks in `/hooks`.
 
 This procedure keeps message data.

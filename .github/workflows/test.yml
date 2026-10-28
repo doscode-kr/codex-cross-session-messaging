@@ -18,6 +18,6 @@ jobs:
       - run: npm ci --prefix plugins/cross-session --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm install --global @openai/codex@0.161.0
-      - run: npm test
+      - run: node scripts/test.mjs --test-concurrency=1
         env:
           CROSS_SESSION_REAL_CODEX_TEST: '1'

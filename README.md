@@ -68,7 +68,7 @@ The plugin does not guarantee model understanding or task completion.
    npm run install:global
    ```
 
-5. Open a new Codex CLI session.
+5. Open Codex or resume your saved session.
 6. Review the plugin hooks in `/hooks`.
 7. Trust the hooks after your review.
 8. Enter `$cross-session` in Codex.

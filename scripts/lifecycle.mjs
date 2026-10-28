@@ -139,13 +139,22 @@ export async function inventory(run, home) {
   }
 }
 
+const cacheVersionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
 export function validateCache(cache) {
   if (!existsSync(cache)) return;
+  safeTree(cache);
   for (const version of readdirSync(cache)) {
-    const file = join(cache, version, 'package.json');
+    const directory = join(cache, version);
+    const entry = lstatSync(directory);
+    if (!entry.isDirectory() || !cacheVersionPattern.test(version)) {
+      throw new Error(`The cache contains an unrecognized plugin: ${directory}`);
+    }
+    if (readdirSync(directory).length === 0) continue;
+    const file = join(directory, 'package.json');
     const metadata = existsSync(file) ? parseLifecycleJson(readFileSync(file, 'utf8'), 'A cached plugin package file has invalid JSON. Keep the cache and inspect it before you retry.') : null;
     if (!isObject(metadata) || metadata.name !== 'codex-cross-session-plugin') {
-      throw new Error(`The cache contains an unrecognized plugin: ${join(cache, version)}`);
+      throw new Error(`The cache contains an unrecognized plugin: ${directory}`);
     }
   }
 }

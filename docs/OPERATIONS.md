@@ -110,7 +110,7 @@ See [the tool reference](MANUAL.md) for arguments and results.
    npm run install:global
    ```
 
-10. Open new Codex CLI sessions.
+10. Resume your saved Codex CLI sessions.
 11. Review the new hooks in `/hooks`.
 12. Run `npm run doctor`.
 
@@ -137,7 +137,7 @@ The installer returns an error in that case.
 6. Remove `cross-session@cross-session-local` with `codex plugin remove`.
 7. Remove the old source with `codex plugin marketplace remove cross-session-local` only if no other installed plugin uses it.
 8. Run `npm run install:global` in the new source directory.
-9. Open new Codex CLI sessions.
+9. Resume your saved Codex CLI sessions.
 10. Review the hooks in `/hooks`.
 
 If another installed plugin uses that marketplace, stop this source-change procedure after step 2.

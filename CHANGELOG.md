@@ -13,6 +13,7 @@
 - Shorten long restored records without changing the saved checkpoint or losing checklist item IDs and states.
 - Bound the full broker hook operation, including status checks and startup polling.
 - Give non-startup hook processes five seconds for startup, bounded work, and exit.
+- Accept empty old-version cache directories left by Windows during an upgrade without stopping their processes.
 
 ## Earlier development before 0.2.0
 

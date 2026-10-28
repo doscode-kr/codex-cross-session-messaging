@@ -5,7 +5,7 @@
 ## Version 0.2.0 session continuity
 
 On 2026-10-28, an independent Windows check used Node.js 20.19.4 and Codex 0.164.0.
-With `CROSS_SESSION_REAL_CODEX_TEST=1`, `node scripts/test.mjs --test-concurrency=1` passed 388 of 389 tests.
+For the core continuity candidate, `CROSS_SESSION_REAL_CODEX_TEST=1` with `node scripts/test.mjs --test-concurrency=1` passed 388 of 389 tests.
 One existing Windows path-alias safety case was skipped. No test failed or was canceled.
 All seven real Codex tests ran with temporary homes and local mock model servers.
 
@@ -22,6 +22,13 @@ Regression tests check these cases and retain the saved checkpoint when its disp
 A delayed broker test reproduced two separate 1.6-second requests exceeding the old three-second host limit.
 The new full-operation deadline stopped that sequence without resending it.
 The reported live timeout could not be matched to a specific event in available local logs.
+
+A later installer correction accepts empty old-version cache directories left by Windows.
+Its focused suite passed 18 tests and skipped three platform or opt-in cases.
+An isolated real installer upgrade from 0.1.0 to 0.2.0 returned success while the old-directory holder process remained alive.
+This did not verify that an existing MCP connection kept working or that old cache files remained available.
+An initial parallel CI run passed three matrix jobs; macOS with Node 22 returned project-unavailable after 1.214 seconds in one test.
+CI now uses the same serial command as local verification. Product deadlines and test expectations are unchanged.
 
 ## Historical results
 
