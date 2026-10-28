@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { temporary } from './helpers.mjs';
-import { options, safeTree, preflight, ownsMarketplace, lifecyclePaths, receiptName, pluginId, marketplaceName, inventory } from '../scripts/lifecycle.mjs';
+import { options, safeTree, preflight, ownsMarketplace, lifecyclePaths, receiptName, pluginId, marketplaceName, inventory, validateCache } from '../scripts/lifecycle.mjs';
 import { resolveCodex } from '../plugins/cross-session/src/codex.mjs';
 import { WorkState, workStateFile } from '../plugins/cross-session/src/work-state.mjs';
 
@@ -143,6 +143,34 @@ test('linked home and linked cache children are rejected before removal', async 
   assert.throws(() => safeTree(cache), /Linked path/);
   await assert.rejects(runScript('uninstall.mjs', ['--home', root]), /Linked path/);
   assert.equal(existsSync(target), true);
+});
+
+test('cache validation permits only empty standard version directories', async t => {
+  const root = temporary(t);
+  const valid = lifecyclePaths(join(root, 'valid')).cache;
+  mkdirSync(join(valid, '0.1.0'), { recursive: true });
+  mkdirSync(join(valid, '2.0.0-beta.1+windows.1'), { recursive: true });
+  assert.doesNotThrow(() => validateCache(valid));
+
+  for (const [name, prepare, message] of [
+    ['unknown-name', cache => mkdirSync(join(cache, 'release'), { recursive: true }), /unrecognized plugin/],
+    ['non-directory', cache => { mkdirSync(cache, { recursive: true }); writeFileSync(join(cache, '0.1.0'), 'not a directory'); }, /unrecognized plugin/],
+    ['non-empty-placeholder', cache => { mkdirSync(join(cache, '0.1.0'), { recursive: true }); writeFileSync(join(cache, '0.1.0', 'held.txt'), 'content'); }, /unrecognized plugin/],
+    ['invalid-json', cache => { mkdirSync(join(cache, '0.1.0'), { recursive: true }); writeFileSync(join(cache, '0.1.0', 'package.json'), '{invalid'); }, /invalid JSON/],
+    ['wrong-product', cache => { mkdirSync(join(cache, '0.1.0'), { recursive: true }); writeFileSync(join(cache, '0.1.0', 'package.json'), JSON.stringify({ name: 'unrelated' })); }, /unrecognized plugin/]
+  ]) {
+    const cache = lifecyclePaths(join(root, name)).cache;
+    prepare(cache);
+    assert.throws(() => validateCache(cache), message);
+  }
+
+  const linked = lifecyclePaths(join(root, 'linked')).cache;
+  const target = join(root, 'linked-target');
+  mkdirSync(target);
+  mkdirSync(linked, { recursive: true });
+  try { symlinkSync(target, join(linked, '0.1.0'), process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (error) { if (error.code === 'EPERM') return; throw error; }
+  assert.throws(() => validateCache(linked), /Linked path/);
 });
 
 test('Windows 8.3 home spelling cannot bypass an active broker check', { skip: process.platform !== 'win32' }, async t => {

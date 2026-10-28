@@ -5,6 +5,9 @@ import { BrokerClient } from './client.mjs';
 import { CrossSessionError, errorData } from './errors.mjs';
 import { tools } from './tools.mjs';
 
+const legacyChainingTools = new Set(['link_chain', 'unlink_chain', 'relink_chain']);
+const sessionLocalOnly = () => new CrossSessionError('CHAINING_SESSION_LOCAL_ONLY', 'Session continuity only saves and restores the calling session. Manual session linking is unavailable.');
+
 export function callerIdentity(meta = {}, env = process.env) {
   let turn = meta['x-codex-turn-metadata'] ?? {};
   if (typeof turn === 'string') {
@@ -17,6 +20,7 @@ export function callerIdentity(meta = {}, env = process.env) {
   return id;
 }
 export function validateTool(name, args) {
+  if (legacyChainingTools.has(name)) throw sessionLocalOnly();
   const tool = tools.find(item => item.name === name);
   if (!tool) throw new CrossSessionError('UNKNOWN_TOOL', `Unknown tool: ${name}`);
   validateValue(tool.inputSchema, args, 'arguments');
@@ -49,17 +53,16 @@ function stageSummary(stages = {}) {
 function messageSummary(message) {
   return `${message.id}: ${label(message.from?.name ?? message.from?.id)} -> ${label(message.to?.name ?? message.to?.id)}; ${message.status}; ${message.acknowledgedAt ? 'receipt confirmed' : 'receipt not confirmed'}; ${stageSummary(message.stages)}; idle notification ${message.idleNotification ?? 'unknown'}; ${label(message.text)}`;
 }
-function chainSummary(result) {
-  const relationship = result.relationship ?? {};
-  return `Chain: ${result.status}; reason: ${result.reason ?? 'unknown'}; receiving: ${relationship.receiving_session_id ?? 'none'}; source: ${relationship.source_session_id ?? 'none'}; binding: ${relationship.binding_id ?? 'none'}; ID: ${relationship.chain_id ?? result.binding?.chain_id ?? result.tombstone?.chain_id ?? 'none'}; checkpoint: ${relationship.checkpoint_id ?? result.binding?.latest_checkpoint_id ?? result.binding?.pinned_checkpoint_id ?? 'none'}; checkpoint owner: ${relationship.checkpoint_session_id ?? 'none'}; selected from: ${relationship.selected_from ?? 'none'}.${result.tombstone ? ` Unlink record: ${result.tombstone.id}.` : ''} Saved reports are not user approval.`;
+function sessionLocalSummary(result) {
+  const session = result.session ?? {};
+  const owner = result.owner ?? session.owner ?? session.session_id ?? result.relationship?.receiving_session_id ?? 'none';
+  const checkpoint = session.latest_checkpoint_id ?? result.relationship?.checkpoint_id ?? 'none';
+  return `${result.mode ?? 'session_local'}: ${result.status}; reason: ${result.reason ?? 'unknown'}; session: ${owner}; checkpoint: ${checkpoint}. Saved reports are not user approval or proof of task completion.`;
 }
 export function summarizeResult(name, result) {
   let summary;
   switch (name) {
-    case 'link_chain':
-    case 'get_chain':
-    case 'unlink_chain':
-    case 'relink_chain': summary = chainSummary(result); break;
+    case 'get_chain': summary = sessionLocalSummary(result); break;
     case 'get_work_state':
     case 'set_work_state': summary = `Work state: ${result.state?.status ?? 'none'}; revision: ${result.revision}. Completion is not verified. Continuation: ${result.continuation.armed && !result.continuation.revoked && result.continuation.used < result.continuation.limit ? 'available' : 'unavailable'}.${result.checklist_summary ? ` Checklist: ${result.checklist_summary.completed}/${result.checklist_summary.total} complete; ${result.checklist_summary.blocked} blocked. User decision required: ${result.checklist_summary.user_decision_required}.${result.checklist_summary.user_decision_required ? ' Ask the user for a decision; do not retry exhausted items.' : ''}` : ''}`; break;
     case 'list_agents':

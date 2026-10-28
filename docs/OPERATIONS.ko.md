@@ -117,7 +117,7 @@ Codex 데몬 접근은 `doctor`로 별도 확인합니다.
    npm run install:global
    ```
 
-10. 사용자는 새 Codex CLI 세션을 엽니다.
+10. 사용자는 Codex를 열거나 저장된 자기 세션을 재개합니다.
 11. 사용자는 `/hooks`에서 새 훅을 검토합니다.
 12. 사용자는 `npm run doctor`를 실행합니다.
 
@@ -144,7 +144,7 @@ SessionEnd hook은 브로커를 시작하지 않습니다.
 6. 사용자는 `codex plugin remove cross-session@cross-session-local`을 실행합니다.
 7. 다른 설치된 플러그인이 사용하지 않으면 사용자는 `codex plugin marketplace remove cross-session-local`을 실행합니다.
 8. 사용자는 새 원본 폴더에서 `npm run install:global`을 실행합니다.
-9. 사용자는 새 Codex CLI 세션을 엽니다.
+9. 사용자는 Codex를 열거나 저장된 자기 세션을 재개합니다.
 10. 사용자는 `/hooks`에서 훅을 검토합니다.
 
 다른 설치된 플러그인이 해당 마켓플레이스를 사용하면 사용자는 2단계 후 이 절차를 중단합니다.

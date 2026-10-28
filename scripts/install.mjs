@@ -57,7 +57,7 @@ async function install() {
     if (result.pluginId !== pluginId) throw new Error('Codex did not confirm the expected plugin installation.');
     writeFileSync(temporary, JSON.stringify({ product: 'codex-cross-session', schema: 1, pluginId, marketplaceName, sourceRoot: root }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     renameSync(temporary, paths.receipt);
-    console.log('Installed cross-session. Open a new Codex CLI session. Review the plugin in /hooks and trust its hooks. Use $cross-session.');
+    console.log('Installed cross-session. Review the plugin in /hooks and trust its hooks. Use $cross-session.');
   } catch (error) {
     const failures = [];
     if (pluginAttempted && !hadPlugin) {

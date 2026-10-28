@@ -19,24 +19,24 @@ It reads the running daemon socket with `codex app-server daemon version`.
 It connects to that socket through `codex app-server proxy`.
 The `ws` dependency handles WebSocket framing over the byte proxy.
 Message delivery does not start a separate model executor.
-The `chain launch` command is disabled because the shared daemon cannot receive its child-only ticket.
 
 ## Session chaining
 
-[Session chaining](CHAINING.md) keeps a separate local store beside the message journal.
-Its MCP tools use the same caller metadata and live-session checks as message tools.
-Local CLI and hook processes use the same exclusive storage lock.
-Bindings use complete lowercase UUIDs and pin an immutable source checkpoint.
-The checkpoint copies the validated work-state report without changing its owner or continuation policy.
-Automatic transcript and Git records stay separate from that report.
-All restored content is untrusted data within the current user's scope.
+[Session chaining](CHAINING.md) keeps each session's work across compaction.
+It starts automatically after transcript UUID and project verification.
+The store uses `session-continuity-v1` beside the message journal.
+State and checkpoints contain the same session UUID and real project boundary.
+Restore checks both values and never reads another session's checkpoint.
+The first observed request, recent records, and structured work report stay separate.
+Restored records are past data within the current user request and permissions.
 
-A launch ticket has one owner and a ten-minute first-use limit.
-The stored index contains only its hash.
-Ticket storage and claims are implemented, but the CLI transport remains unsupported.
-Unlink compares the expected chain and checkpoint before saving a tombstone.
-Relink requires that tombstone's exact ID.
-Optional chaining errors do not disable message delivery.
+PreCompact and Stop save current records. SessionEnd saves and marks the session closed.
+SessionStart restores the same session's records and reads current AGENTS files separately.
+Clear resets the context range and does not bring old work back.
+Storage uses an exclusive lock, bounded records, and atomic replacement.
+The old `chaining-v1` namespace remains untouched and is not a restore source.
+Legacy link and launch calls fail before changing state.
+Chaining errors do not disable message delivery.
 
 ## Immediate delivery
 

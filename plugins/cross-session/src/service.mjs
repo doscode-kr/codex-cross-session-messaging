@@ -3,10 +3,11 @@ import { resolve, normalize, dirname } from 'node:path';
 import { CrossSessionError, requireText, errorData } from './errors.mjs';
 import { displayStatus } from './native.mjs';
 import { WorkState } from './work-state.mjs';
-import { Chaining } from './chaining.mjs';
+import { SessionContinuity } from './chaining.mjs';
 import { validateTool } from './mcp.mjs';
 
 const pendingDelivery = Symbol('pendingDelivery');
+const legacyChainingMethods = new Set(['link_chain', 'unlink_chain', 'relink_chain']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requestId(value) {
@@ -33,7 +34,7 @@ function sameFolder(a, b) {
   return canonical(a) === canonical(b);
 }
 export class MessagingService {
-  constructor(store, native, workState = new WorkState(dirname(store.path))) {
+  constructor(store, native, workState = new WorkState(dirname(store.path)), chaining = new SessionContinuity(dirname(store.path))) {
     this.store = store; this.native = native; this.live = new Map(); this.serial = Promise.resolve();
     this.deliveries = new Set();
     this.pendingMessages = new Map();
@@ -45,7 +46,7 @@ export class MessagingService {
     this.liveGeneration = 0;
     this.stopping = false;
     this.workState = workState;
-    this.chaining = new Chaining(dirname(store.path));
+    this.chaining = chaining;
   }
   run(action) {
     const result = this.serial.then(action);
@@ -105,22 +106,19 @@ export class MessagingService {
     return matches[0];
   }
   async call(method, args = {}, sessionId) {
-    await this.refresh({ persistLeader: !['list_idle_notifications', 'get_work_state', 'set_work_state', 'link_chain', 'get_chain', 'unlink_chain', 'relink_chain'].includes(method) });
+    if (legacyChainingMethods.has(method)) {
+      throw new CrossSessionError('CHAINING_SESSION_LOCAL_ONLY', 'Session continuity only saves and restores the calling session. Manual session linking is unavailable.');
+    }
+    await this.refresh({ persistLeader: !['list_idle_notifications', 'get_work_state', 'set_work_state', 'get_chain'].includes(method) });
     const result = await this.run(() => {
       this.requireRunning();
       if (method === 'doctor') return { scope: 'same-computer', transport: 'immediate-only', daemon: this.native.info, sessionCount: this.live.size, leader: this.store.leader };
       const caller = this.identity(sessionId);
       switch (method) {
-        case 'link_chain':
-        case 'get_chain':
-        case 'unlink_chain':
-        case 'relink_chain': {
+        case 'get_chain': {
           validateTool(method, args);
-          const { detail, ...input } = args;
-          if (method === 'link_chain') return this.chaining.bind(caller.id, input);
-          if (method === 'get_chain') return this.chaining.status(caller.id);
-          if (method === 'relink_chain') return this.chaining.relink(caller.id, input);
-          return this.chaining.unlink(caller.id, { ...input, expected_checkpoint_id: input.expected_checkpoint_id === 'none' ? null : input.expected_checkpoint_id });
+          return Promise.resolve(this.chaining.status(caller.id, {}))
+            .then(status => ({ ...status, mode: 'session_local', owner: caller.id }));
         }
         case 'get_work_state':
           if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length) throw new CrossSessionError('INVALID_ARGUMENT', 'get_work_state takes no arguments.');

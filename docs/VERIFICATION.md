@@ -2,7 +2,41 @@
 
 [한국어](VERIFICATION.ko.md)
 
-## Project guidance verification
+## Version 0.2.0 session continuity
+
+On 2026-10-28, an independent Windows check used Node.js 20.19.4 and Codex 0.164.0.
+For the core continuity candidate, `CROSS_SESSION_REAL_CODEX_TEST=1` with `node scripts/test.mjs --test-concurrency=1` passed 388 of 389 tests.
+One existing Windows path-alias safety case was skipped. No test failed or was canceled.
+All seven real Codex tests ran with temporary homes and local mock model servers.
+
+The A/B/C test opened two sessions in one project and a third in another project without linking them.
+All three sessions compacted automatically.
+The first normal request after each compaction contained its own original-request field, completed-item reports, and remaining items in plugin developer context.
+That same request contained the updated AGENTS body. Other sessions' work markers were absent.
+The test recorded nine model requests and 15 completed hooks.
+Closing each session saved its final checkpoint and left only those three UUIDs in continuity storage.
+These tests verify context delivery, not model compliance or the truth of completion reports.
+
+Review found and resolved project-root redirection, old work after clear, built-in AGENTS records selected as work requests, early Node 20 signal compatibility, and long Unicode context loss.
+Regression tests check these cases and retain the saved checkpoint when its display copy is shortened.
+A delayed broker test reproduced two separate 1.6-second requests exceeding the old three-second host limit.
+The new full-operation deadline stopped that sequence without resending it.
+The reported live timeout could not be matched to a specific event in available local logs.
+
+A later installer correction accepts empty old-version cache directories left by Windows.
+Its focused suite passed 18 tests and skipped three platform or opt-in cases.
+An isolated real installer upgrade from 0.1.0 to 0.2.0 returned success while the old-directory holder process remained alive.
+This did not verify that an existing MCP connection kept working or that old cache files remained available.
+An initial parallel CI run passed three matrix jobs; macOS with Node 22 returned project-unavailable after 1.214 seconds in one test.
+CI now uses the same serial command as local verification. Product deadlines and test expectations are unchanged.
+
+## Historical results
+
+The checks below describe earlier candidates.
+Cross-session links and launch are not part of the 0.2.0 behavior.
+Current continuity restores only the same session's records. See [session continuity](CHAINING.md).
+
+## Earlier project guidance verification
 
 On 2026-10-28, an independent Windows check used Node.js 20.19.4 and Codex 0.164.0.
 With `CROSS_SESSION_REAL_CODEX_TEST=1`, `node scripts/test.mjs --test-concurrency=1` passed 386 of 387 tests.
