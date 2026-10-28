@@ -2,6 +2,10 @@
 
 [한국어](CHANGELOG.ko.md)
 
+## 0.2.1
+
+- Report the installed plugin version consistently in broker health, MCP server metadata, and native client metadata.
+
 ## 0.2.0
 
 - Correct session chaining to automatic work continuity within the same session.
