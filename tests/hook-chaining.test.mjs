@@ -73,7 +73,7 @@ test('mismatched transcript refuses restore and checkpoint writes', async t => {
 test('a different project is rejected before continuity storage', async t => {
   const input = fixture(t), other = temporary(t);
   const fail = () => assert.fail('project mismatch must fail before continuity storage');
-  const result = await runChainingHook({ ...input, cwd: other, hook_event_name: 'SessionStart', source: 'startup' }, {}, {
+  const result = await runChainingHook({ ...input, cwd: other, hook_event_name: 'SessionStart', source: 'startup' }, process.env, {
     chaining: { ensureOwnSession: fail, restore: fail }
   });
   assert.equal(result.status, 'rejected');
