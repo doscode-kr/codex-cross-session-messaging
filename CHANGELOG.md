@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- Inject project AGENTS file contents at startup, resume, and compaction through the installed SessionStart hook.
+- Keep instruction discovery inside the current worktree, with bounded reads and isolated failure handling.
+- Do not add project bodies on ordinary UserPromptSubmit events. See [project guidance](docs/PROJECT_GUIDANCE.md).
+
 - Deliver peer bodies without a second lookup notice, with a bounded fallback for explicit input rejection.
 - Add `request_id` to recover send and reply receipts without another native submission.
 - Separate storage, target acceptance, recipient receipt, and unreported task completion.

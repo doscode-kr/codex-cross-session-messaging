@@ -177,7 +177,9 @@ node plugins/cross-session/src/cli.mjs chain doctor
 
 플러그인은 SessionStart에만 규칙과 인계 자료를 넣습니다.
 플러그인의 UserPromptSubmit 훅은 세션 등록을 갱신하며 안내문을 출력하지 않습니다.
-프로젝트의 작업 규칙은 해당 프로젝트의 훅이 담당합니다.
+SessionStart는 [프로젝트 지침](PROJECT_GUIDANCE.ko.md)에 따라 로컬 AGENTS 본문도 다시 넣습니다.
+이 동작에는 체인 연결이 필요하지 않습니다.
+프로젝트 훅은 다른 작업별 규칙을 제공할 수 있습니다.
 플러그인은 다른 훅의 출력을 지우거나 바꾸지 않습니다.
 프로젝트 안내가 반복되면 훅 등록과 안내문을 출력하는 명령을 함께 확인합니다.
 프로젝트 훅은 SessionStart에 전체 규칙을 전달할 수 있습니다.

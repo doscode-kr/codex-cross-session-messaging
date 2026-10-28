@@ -2,6 +2,20 @@
 
 [한국어](VERIFICATION.ko.md)
 
+## Project guidance verification
+
+On 2026-10-28, an independent Windows check used Node.js 20.19.4 and Codex 0.164.0.
+With `CROSS_SESSION_REAL_CODEX_TEST=1`, `node scripts/test.mjs --test-concurrency=1` passed 386 of 387 tests.
+One existing Windows path alias safety test was skipped. No test failed or was canceled.
+Earlier parallel runs had timeouts. The serial run kept the product time limits unchanged.
+
+The real host test changed the AGENTS body before startup, compaction, and resume.
+The first normal model request after each event contained that event's new body in plugin developer context.
+The test used a temporary Codex home and a local mock model server.
+It checked delivery of the text, not model compliance with the text.
+File tests include short reads, damaged Git settings, worktree boundaries, UTF-8, size limits, and links.
+Guidance errors do not stop messaging registration or handoff restore.
+
 ## Receipt and handoff recovery checks
 
 On 2026-10-28, Windows checks used Node.js 20.19.4 and isolated Codex hosts.

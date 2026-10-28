@@ -30,6 +30,10 @@ Restored handoffs can reach the model provider and must not contain secrets.
 The plugin does not make an external model call to create a checkpoint.
 Unlink cannot erase handoff content already sent to the model.
 Launch tickets select their first consumer; they do not authenticate the parent's intent.
+The SessionStart hook reads local [project instructions](docs/PROJECT_GUIDANCE.md) into model context.
+The plugin does not store these bodies in its journal or checkpoints.
+Codex can retain them in conversation records and send them to the model provider.
+They do not grant new approval or change session permissions.
 The installer can also store `.cross-session-install.json` in the Codex home.
 That record contains the plugin identity and source directory path.
 The journal is plaintext.

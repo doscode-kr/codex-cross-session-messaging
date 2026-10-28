@@ -171,7 +171,9 @@ This release adds `PreCompact` and preserves the existing hook command strings a
 
 The plugin adds its rules and handoff only at SessionStart.
 Its UserPromptSubmit hook updates session registration and does not add guidance text.
-Project task rules come from the project's own hooks.
+It also reloads local AGENTS contents as described in [project instructions](PROJECT_GUIDANCE.md).
+This does not require a chain binding.
+Project hooks can provide other task-specific rules.
 The plugin does not remove or rewrite another hook's output.
 If project guidance repeats, inspect both hook registrations and the command that writes that guidance.
 A project hook can send full rules on SessionStart and changes on later inputs in the same session.

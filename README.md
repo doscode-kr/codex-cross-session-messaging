@@ -145,6 +145,7 @@ Report unresolved conflicts to the leader if that role is assigned.
 
 See [work state and the optional Stop check](docs/CONTINUATION.md) for completion guidance and limits.
 See [session chaining](docs/CHAINING.md) to pass a saved handoff to a new session.
+The trusted SessionStart hook also reloads [project instructions](docs/PROJECT_GUIDANCE.md) when the same session resumes or compacts.
 
 MCP tool results use short text by default.
 The full result is available in `structuredContent`.
