@@ -134,8 +134,9 @@ await writeHookOutput(output);
 `);
   const command = `${process.platform === 'win32' ? '& ' : ''}"${process.execPath.replaceAll('\\', '/')}" "${wrapper.replaceAll('\\', '/')}"`;
   const events = ['SessionStart', 'Stop', 'PreCompact', 'SessionEnd'];
+  const productHooks = JSON.parse(await readFile('plugins/cross-session/hooks/hooks.json', 'utf8')).hooks;
   await writeFile(join(home, 'hooks.json'), JSON.stringify({ hooks: Object.fromEntries(events.map(event =>
-    [event, [{ hooks: [{ type: 'command', command, timeout: event === 'SessionStart' ? 10 : 5 }] }]])) }));
+    [event, [{ hooks: [{ type: 'command', command, timeout: productHooks[event][0].hooks[0].timeout }] }]])) }));
   const config = `model_provider = "local_mock"
 model = "fake-model"
 model_auto_compact_token_limit = 10000
@@ -187,7 +188,13 @@ supports_websockets = false
   }
 
   let host = await launch();
-  const definitions = (await host.rpc('hooks/list', { cwds: [sharedProject, otherProject] })).data.flatMap(value => value.hooks);
+  const listed = await host.rpc('hooks/list', { cwds: [sharedProject, otherProject] });
+  for (const entry of listed.data) {
+    assert.deepEqual(entry.errors, []);
+    assert.doesNotMatch(entry.warnings.join('\n'), /clamping .*hook timeout/i);
+    assert.equal(entry.hooks.find(hook => hook.eventName === 'sessionEnd').timeoutSec, 3);
+  }
+  const definitions = listed.data.flatMap(value => value.hooks);
   assert.ok(definitions.length >= events.length);
   await stopChild(host.child);
   const uniqueDefinitions = [...new Map(definitions.map(hook => [hook.key, hook])).values()];
@@ -257,6 +264,14 @@ supports_websockets = false
       const records = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
       return records.some(value => value.phase === 'completed' && value.event === 'SessionEnd' && value.session === fixture.thread.id);
     });
+    await waitFor(() => host.notifications.some(value => value.method === 'hook/completed'
+      && value.params.threadId === fixture.thread.id && value.params.run.eventName === 'sessionEnd'));
+    const completed = host.notifications.find(value => value.method === 'hook/completed'
+      && value.params.threadId === fixture.thread.id && value.params.run.eventName === 'sessionEnd').params.run;
+    assert.equal(completed.status, 'completed');
+    assert.ok(Number.isInteger(completed.durationMs) && completed.durationMs >= 0 && completed.durationMs < 3000,
+      `SessionEnd took ${completed.durationMs} ms in Codex.`);
+    t.diagnostic(`SessionEnd ${fixture.thread.id}: ${completed.durationMs} ms, completed`);
   }
   const continuity = new SessionContinuity(state);
   for (const fixture of Object.values(fixtures)) {
