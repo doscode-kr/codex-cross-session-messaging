@@ -1,6 +1,6 @@
 {
   "name": "codex-cross-session-plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "license": "MIT",
   "description": "Immediate messages between independent Codex CLI sessions on one computer.",
