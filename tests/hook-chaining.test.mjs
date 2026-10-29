@@ -180,7 +180,8 @@ test('hook command definitions keep all lifecycle events', () => {
   assert.deepEqual(Object.keys(hooks), ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'Stop', 'Interrupt', 'PreCompact']);
   const command = `node -e "import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'src/hooks.mjs')).href).then(m=>m.main())"`;
   for (const [event, groups] of Object.entries(hooks)) {
-    assert.deepEqual(groups, [{ hooks: [{ type: 'command', command, timeout: event === 'SessionStart' ? 10 : 5 }] }]);
+    const timeout = event === 'SessionStart' ? 10 : ['SessionEnd', 'Interrupt'].includes(event) ? 3 : 5;
+    assert.deepEqual(groups, [{ hooks: [{ type: 'command', command, timeout }] }]);
   }
 });
 

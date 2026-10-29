@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, access, realpath, rm } from 'node:fs/promises';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { resolveCodex } from '../plugins/cross-session/src/codex.mjs';
 import { isolatedEnvironment } from '../scripts/evaluate-coordination.mjs';
 
@@ -55,6 +56,8 @@ test('real Codex Interrupt cancels a pending Stop continuation', { skip: process
     'model_providers.local_mock.requires_openai_auth': false,
     'model_providers.local_mock.supports_websockets': false };
   const bin = resolveCodex();
+  const productHooks = JSON.parse(await readFile('plugins/cross-session/hooks/hooks.json', 'utf8')).hooks;
+  const hookSource = pathToFileURL(resolve('plugins/cross-session/src/hooks.mjs')).href;
   for (const interrupted of [false, true]) {
     requests = 0;
     const home = join(root, interrupted ? 'interrupted' : 'baseline'), cwd = join(home, 'work');
@@ -64,18 +67,27 @@ test('real Codex Interrupt cancels a pending Stop continuation', { skip: process
     await writeFile(fixture, `const fs = require('node:fs');
 let raw = ''; process.stdin.on('data', chunk => raw += chunk);
 process.stdin.on('end', async () => {
- const input = JSON.parse(raw);
+ const input = JSON.parse(raw), started = Date.now();
  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ event: input.hook_event_name, turnId: input.turn_id, active: input.stop_hook_active }) + String.fromCharCode(10));
  if (input.hook_event_name === 'Stop' && input.stop_hook_active === false) {
   fs.writeFileSync(${JSON.stringify(marker)}, 'entered');
   const deadline = Date.now() + 3000;
   while (!fs.existsSync(${JSON.stringify(release)}) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
   console.log(JSON.stringify({ decision: 'block', reason: 'Continue only the existing approved fixture once. Respect user stops.' }));
+ } else if (input.hook_event_name === 'Interrupt') {
+  const { runHook } = await import(${JSON.stringify(hookSource)});
+  const output = await runHook(input, { hook: async value => {
+   fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ phase: 'broker', event: value.hook_event_name }) + String.fromCharCode(10));
+   return {};
+  } });
+  console.log(JSON.stringify(output));
+  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ phase: 'completed', event: input.hook_event_name, elapsed: Date.now() - started }) + String.fromCharCode(10));
  } else console.log('{}');
 });
 `);
     const command = `${process.platform === 'win32' ? '& ' : ''}"${process.execPath.replaceAll('\\', '/')}" "${fixture.replaceAll('\\', '/')}"`;
-    await writeFile(join(home, 'hooks.json'), JSON.stringify({ hooks: Object.fromEntries(['UserPromptSubmit', 'Stop', 'Interrupt'].map(event => [event, [{ hooks: [{ type: 'command', command, timeout: 5 }] }]])) }));
+    await writeFile(join(home, 'hooks.json'), JSON.stringify({ hooks: Object.fromEntries(['UserPromptSubmit', 'Stop', 'Interrupt'].map(event =>
+      [event, [{ hooks: [{ type: 'command', command, timeout: productHooks[event][0].hooks[0].timeout }] }]])) }));
     await writeFile(join(home, 'config.toml'), '');
     const env = { ...isolatedEnvironment(process.env, home), ...(process.platform === 'win32' ? { USERPROFILE: process.env.USERPROFILE } : {}) };
     async function launch() {
@@ -113,7 +125,13 @@ process.stdin.on('end', async () => {
       return { child, rpc, notifications };
     }
     let host = await launch();
-    const hooks = (await host.rpc('hooks/list', { cwds: [cwd] })).data.flatMap(entry => entry.hooks);
+    const listed = await host.rpc('hooks/list', { cwds: [cwd] });
+    for (const entry of listed.data) {
+      assert.deepEqual(entry.errors, []);
+      assert.doesNotMatch(entry.warnings.join('\n'), /clamping .*hook timeout/i);
+      assert.equal(entry.hooks.find(hook => hook.eventName === 'interrupt').timeoutSec, 3);
+    }
+    const hooks = listed.data.flatMap(entry => entry.hooks);
     assert.equal(hooks.length, 3, 'Only the three vetted fixture hooks can be trusted');
     for (const hook of hooks) {
       assert.equal(hook.command, command);
@@ -146,6 +164,16 @@ process.stdin.on('end', async () => {
     assert.equal(requests, interrupted ? 1 : 2, 'An Interrupt must prevent a late Stop block from starting another request');
     assert.equal(events.some(entry => entry.event === 'Interrupt'), interrupted);
     assert.equal(events.some(entry => entry.event === 'Stop' && entry.active === true), !interrupted);
+    if (interrupted) {
+      await waitFor(() => host.notifications.some(entry => entry.method === 'hook/completed' && entry.params.run.eventName === 'interrupt'));
+      const completed = host.notifications.find(entry => entry.method === 'hook/completed' && entry.params.run.eventName === 'interrupt').params.run;
+      assert.equal(completed.status, 'completed');
+      assert.ok(Number.isInteger(completed.durationMs) && completed.durationMs >= 0 && completed.durationMs < 3000,
+        `Interrupt took ${completed.durationMs} ms in Codex.`);
+      assert.equal(events.filter(entry => entry.phase === 'broker' && entry.event === 'Interrupt').length, 1);
+      assert.equal(events.filter(entry => entry.phase === 'completed' && entry.event === 'Interrupt').length, 1);
+      t.diagnostic(`Interrupt: ${completed.durationMs} ms, completed without another model request`);
+    }
     await stopChild(host.child);
   }
 });
